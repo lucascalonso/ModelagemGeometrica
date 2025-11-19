@@ -31,10 +31,9 @@ class AppModel:
     # ---------------------------------------------------------------------
     def addCurve(self, curve):
         new_segment = Segment(curve)
-        # Force the polyline to be generated immediately upon creation.
-        # This prevents errors when getBoundBox is called before the first paint.
         new_segment.getPolylinePts() 
         self.segments.append(new_segment)
+        return new_segment
 
     # ---------------------------------------------------------------------
     def getSelectSegments(self):
@@ -292,7 +291,29 @@ class AppModel:
         else:
             self.controller.popupMessage('Cannot create patch:\n'
                                          'The selected segments do not close off a region.')
-
+    # ---------------------------------------------------------------------
+    def updatePatchWithSplit(self, old_segment, new_segments):
+        """Finds any patch containing old_segment and replaces it with new_segments."""
+        for patch in self.patches:
+            try:
+                # Find the index of the old segment in the patch's boundary
+                idx = patch.getSegments().index(old_segment)
+                
+                # Get the current list of segments from the patch
+                patch_segments = patch.getSegments()
+                
+                # Rebuild the list: segments before + new segments + segments after
+                # Note: new_segments must be in the correct order from the split operation
+                new_patch_segments = patch_segments[:idx] + new_segments + patch_segments[idx+1:]
+                
+                # Update the patch with the new list of segments
+                patch.setSegments(new_patch_segments)
+                
+                # We assume a segment can only belong to one patch boundary
+                break 
+            except ValueError:
+                # The old_segment was not in this patch, continue to the next one
+                continue
     # ---------------------------------------------------------------------
     def delSelectSegments(self):
         # Build a list of segments to keep and segments to delete.
@@ -323,7 +344,7 @@ class AppModel:
 
         # Replace the old segments list with the new one.
         self.segments = segments_to_keep
-
+    
     # ---------------------------------------------------------------------
     def delSelectPatches(self):
         # Delete all selected patches.

@@ -350,7 +350,6 @@ class AppView:
         if num_pieces < 2:
             return
 
-        # 1. Get the list of selected segments to be split
         segments_to_split = []
         all_segments = self.model.getSegments()
         for seg in all_segments:
@@ -360,30 +359,31 @@ class AppView:
         if not segments_to_split:
             return
 
-        # 2. Generate all new curves from the segments to be split
-        all_new_curves = []
+        # For each segment we are splitting...
         for seg in segments_to_split:
             curve = seg.getCurve()
+            
             try:
+                # Split the curve into new, smaller curves
                 new_curves = curve.split(num_pieces)
-                all_new_curves.extend(new_curves)
+                
+                # Create new Segment objects from the new curves
+                new_segments = []
+                for new_curve in new_curves:
+                    new_segment = self.model.addCurve(new_curve) # Assuming addCurve returns the new segment
+                    new_segments.append(new_segment)
+
+                # Tell the model to update any patch that used the old segment
+                self.model.updatePatchWithSplit(seg, new_segments)
+
             except AttributeError:
                 print(f"Warning: The curve of type {type(curve).__name__} does not have a 'split' method.")
-                pass
+                continue
         
-        # 3. Unselect everything to have a clean state
+        # Now that patches are updated, we can safely delete the original segments
         self.unselectAll()
-
-        # 4. Add all the newly created curves to the model
-        #    The model is responsible for creating segments from them.
-        for new_curve in all_new_curves:
-            self.model.addCurve(new_curve)
-
-        # 5. Now, select ONLY the original segments that were split
         for seg in segments_to_split:
             seg.setSelected(True)
-
-        # 6. Delete all selected (i.e., the original) segments at once
         self.model.delSelectSegments()
 
     # ---------------------------------------------------------------------

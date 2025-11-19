@@ -13,8 +13,12 @@ class Patch():
         self.meshConn = []
 
     # ---------------------------------------------------------------------
-    def setSelected(self, _status):
-        self.selected = _status
+    def setSelected(self, selected):
+        self.selected = selected
+
+    # ---------------------------------------------------------------------
+    def setSegments(self,new_segments):
+        self.segments = new_segments
 
     # ---------------------------------------------------------------------
     def isSelected(self):

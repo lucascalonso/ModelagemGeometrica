@@ -188,22 +188,13 @@ class Polyline(Curve):
 
         new_lines = []
         length_per_piece = total_length / num_pieces
-
-        # Find the start point of the first new line
         current_point = self.pts[0]
 
         for i in range(num_pieces):
             target_length = (i + 1) * length_per_piece
-            
-            # Find the end point for this piece by traversing the polyline
             next_point = self.evalPointByLength(target_length)
-            
-            # Create a new Line object for this piece
-            # CORREÇÃO: O construtor da Line espera uma LISTA de pontos.
             new_line = Line([current_point, next_point])
             new_lines.append(new_line)
-            
-            # The end point of this piece is the start point of the next
             current_point = next_point
             
         return new_lines
