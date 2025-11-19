@@ -1,7 +1,6 @@
 from compgeom.pnt2d import Pnt2D
 from compgeom.compgeom import CompGeom
 
-
 class AppView:
     def __init__(self, _model=[], _reshape=[]):
         self.model = _model  # owning model object
@@ -323,6 +322,69 @@ class AppView:
     def delSelectEntities(self):
         self.model.delSelectSegments()
         self.model.delSelectPatches()
+
+    # ---------------------------------------------------------------------
+
+    def joinSegments(self, _tol):
+        selected = []
+        # Correctly get segments from the model
+        all_segments = self.model.getSegments()
+        for seg in all_segments:
+            if self.isSegmentSelected(seg):
+                selected.append(seg)
+        
+        if len(selected) == 2:
+            # Call the model's join method
+            self.model.joinSegments(selected[0], selected[1], _tol)
+
+    def getNumSelectedSegments(self):
+        count = 0
+        # Correctly get segments from the model
+        all_segments = self.model.getSegments()
+        for seg in all_segments:
+            if self.isSegmentSelected(seg):
+                count += 1
+        return count
+
+    def splitSelectedSegments(self, num_pieces):
+        if num_pieces < 2:
+            return
+
+        # 1. Get the list of selected segments to be split
+        segments_to_split = []
+        all_segments = self.model.getSegments()
+        for seg in all_segments:
+            if self.isSegmentSelected(seg):
+                segments_to_split.append(seg)
+
+        if not segments_to_split:
+            return
+
+        # 2. Generate all new curves from the segments to be split
+        all_new_curves = []
+        for seg in segments_to_split:
+            curve = seg.getCurve()
+            try:
+                new_curves = curve.split(num_pieces)
+                all_new_curves.extend(new_curves)
+            except AttributeError:
+                print(f"Warning: The curve of type {type(curve).__name__} does not have a 'split' method.")
+                pass
+        
+        # 3. Unselect everything to have a clean state
+        self.unselectAll()
+
+        # 4. Add all the newly created curves to the model
+        #    The model is responsible for creating segments from them.
+        for new_curve in all_new_curves:
+            self.model.addCurve(new_curve)
+
+        # 5. Now, select ONLY the original segments that were split
+        for seg in segments_to_split:
+            seg.setSelected(True)
+
+        # 6. Delete all selected (i.e., the original) segments at once
+        self.model.delSelectSegments()
 
     # ---------------------------------------------------------------------
     def getBoundBox(self):

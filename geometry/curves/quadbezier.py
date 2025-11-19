@@ -114,9 +114,27 @@ class QuadBezier(Curve):
         return left, right
 
     # ---------------------------------------------------------------------
-    def split(self, _t):
-        left, right = self.splitRaw(_t)
-        return left, right
+    def split(self, num_pieces):
+        if num_pieces < 2:
+            return [self]
+
+        new_curves = []
+        remaining_curve = self
+        
+        # Corrected loop logic
+        for i in range(num_pieces, 1, -1):
+            # The split parameter 't' is always 1.0 divided by the
+            # number of pieces remaining to be created from the current curve.
+            t_split = 1.0 / i
+            
+            left, right = remaining_curve.splitRaw(t_split)
+            new_curves.append(left)
+            remaining_curve = right
+        
+        # The last remaining piece is the final segment
+        new_curves.append(remaining_curve)
+        
+        return new_curves
 
     # ---------------------------------------------------------------------
     def join(self, _joinCurve, _pt, _tol):

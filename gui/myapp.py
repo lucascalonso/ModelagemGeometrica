@@ -89,5 +89,8 @@ class Ui_MyApp(object):
         self.actionJoin = QAction("Join", MainWindow)
         modelToolbar.addAction(self.actionJoin)
 
+        self.actionSplit = QAction("Split Segments", MainWindow)
+        modelToolbar.addAction(self.actionSplit)
+
         self.actionCreateRegion = QAction("Create Region", MainWindow)
         modelToolbar.addAction(self.actionCreateRegion)

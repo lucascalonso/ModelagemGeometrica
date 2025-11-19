@@ -2,6 +2,7 @@ from compgeom.pnt2d import Pnt2D
 from compgeom.compgeom import CompGeom
 from geometry.curves.curve import Curve
 import math
+from geometry.curves.line import Line
 
 
 class Polyline(Curve):
@@ -62,6 +63,30 @@ class Polyline(Curve):
             return False
         return (Pnt2D.euclidiandistance(self.pts[0], self.pts[-1]) <= Curve.COORD_TOL)
 
+    # ---------------------------------------------------------------------
+    def evalPointByLength(self, target_len):
+        """Evaluates a point at a specific distance along the polyline's length."""
+        if target_len <= 0.0:
+            return self.pts[0]
+
+        running_length = 0.0
+        for i in range(self.nPts - 1):
+            p1 = self.pts[i]
+            p2 = self.pts[i+1]
+            segment_length = math.hypot(p2.getX() - p1.getX(), p2.getY() - p1.getY())
+            
+            if running_length + segment_length >= target_len:
+                # The point is on this segment
+                remaining_len = target_len - running_length
+                t = remaining_len / segment_length
+                x = (1 - t) * p1.getX() + t * p2.getX()
+                y = (1 - t) * p1.getY() + t * p2.getY()
+                return Pnt2D(x, y)
+            
+            running_length += segment_length
+        
+        # If target_len is greater than or equal to total length, return the last point
+        return self.pts[-1]
     # ---------------------------------------------------------------------
     # Evaluate a point for a given parametric value.
     # Also return the segment of the evaluated point and
@@ -152,9 +177,36 @@ class Polyline(Curve):
         return left, right
 
     # ---------------------------------------------------------------------
-    def split(self, _t):
-        left, right = self.splitRaw(_t)
-        return left, right
+    def split(self, num_pieces):
+        """Splits the polyline into a specified number of new Line objects of equal length."""
+        if num_pieces < 2 or self.nPts < 2:
+            return [self]
+
+        total_length = self.length()
+        if total_length == 0.0:
+            return [self]
+
+        new_lines = []
+        length_per_piece = total_length / num_pieces
+
+        # Find the start point of the first new line
+        current_point = self.pts[0]
+
+        for i in range(num_pieces):
+            target_length = (i + 1) * length_per_piece
+            
+            # Find the end point for this piece by traversing the polyline
+            next_point = self.evalPointByLength(target_length)
+            
+            # Create a new Line object for this piece
+            # CORREÇÃO: O construtor da Line espera uma LISTA de pontos.
+            new_line = Line([current_point, next_point])
+            new_lines.append(new_line)
+            
+            # The end point of this piece is the start point of the next
+            current_point = next_point
+            
+        return new_lines
 
     # ---------------------------------------------------------------------
     def join(self, _joinCurve, _pt, _tol):

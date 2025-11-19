@@ -4,6 +4,7 @@ from geometry.curves.curve import Curve
 from geometry.curves.polyline import Polyline
 from geometry.patch import Patch
 from compgeom.compgeom import CompGeom
+from appmodel import Segment
 
 
 class AppModel:
@@ -27,6 +28,13 @@ class AppModel:
     # ---------------------------------------------------------------------
     def getPatches(self):
         return self.patches
+    # ---------------------------------------------------------------------
+    def addCurve(self, curve):
+        new_segment = Segment(curve)
+        # Force the polyline to be generated immediately upon creation.
+        # This prevents errors when getBoundBox is called before the first paint.
+        new_segment.getPolylinePts() 
+        self.segments.append(new_segment)
 
     # ---------------------------------------------------------------------
     def getSelectSegments(self):
@@ -287,41 +295,34 @@ class AppModel:
 
     # ---------------------------------------------------------------------
     def delSelectSegments(self):
-        # Build a list of all selected segments.
-        selSegments = []
+        # Build a list of segments to keep and segments to delete.
+        segments_to_keep = []
+        segments_to_delete = []
         for seg in self.segments:
             if seg.isSelected():
-                selSegments.append(seg)
-        for delSeg in selSegments:
-            # Delete curve that own deleted segment.
-            curve = delSeg.getCurve()
-            if curve is not None:
-                del curve
-            # In case a deleted segment is used by a patch, delete this patch.
-            patchesToDelete = []
-            for i in range(0, len(self.patches)):
-                for patchSeg in self.patches[i].getSegments():
+                segments_to_delete.append(seg)
+            else:
+                segments_to_keep.append(seg)
+
+        if not segments_to_delete:
+            return
+
+        # For each segment being deleted, handle associated patches.
+        for delSeg in segments_to_delete:
+            patches_to_delete_for_seg = []
+            for ptch in self.patches:
+                for patchSeg in ptch.getSegments():
                     if patchSeg == delSeg:
-                        patchesToDelete.append(self.patches[i])
+                        patches_to_delete_for_seg.append(ptch)
                         break
-            for ptch in patchesToDelete:
-                self.patches.remove(ptch)
+            
+            for ptch in patches_to_delete_for_seg:
+                if ptch in self.patches:
+                    self.patches.remove(ptch)
                 del ptch
 
-        # Delete all selected segments.
-        while True:
-            oneSegmentDeleted = False
-            for i in range(0, len(self.segments)):
-                if self.segments[i].isSelected():
-                    seg = self.segments[i]
-                    self.segments.remove(seg)
-                    crv = seg.getCurve()
-                    del crv
-                    del seg
-                    oneSegmentDeleted = True
-                    break
-            if not oneSegmentDeleted:
-                break
+        # Replace the old segments list with the new one.
+        self.segments = segments_to_keep
 
     # ---------------------------------------------------------------------
     def delSelectPatches(self):

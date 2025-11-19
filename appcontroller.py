@@ -75,8 +75,10 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionGrid.triggered.connect(self.on_actionGrid)
         self.actionIntersect.triggered.connect(self.intersectSegments)
         self.actionJoin.triggered.connect(self.joinSegments)
+        self.actionSplit.triggered.connect(self.on_actionSplit)
         self.actionCreateRegion.triggered.connect(self.createRegion)
 
+        
     ###########################################################
     #                                                         #
     #             Program close callback method               #
@@ -223,9 +225,9 @@ class AppController(QMainWindow, Ui_MyApp):
         self.glcanvas.resetViewDisplay()
 
     # Join two selected segments
-    def joinSegments(self):
-        self.model.joinSelectedSegments()
-        self.glcanvas.resetViewDisplay()
+    #def joinSegments(self):
+    #    self.model.joinSelectedSegments()
+    #    self.glcanvas.resetViewDisplay()
 
     ###########################################################
     #                                                         #
@@ -249,3 +251,24 @@ class AppController(QMainWindow, Ui_MyApp):
         msg.setIcon(QMessageBox.Warning)
         msg.setText(_msgText)
         msg.exec()
+
+    ###########################################################
+
+    def joinSegments(self):
+        self.view.joinSelectedSegments(self.glcanvas.pickTol)
+        self.glcanvas.resetViewDisplay()
+
+    def on_actionSplit(self):
+        # Use the new method to check if any segments are selected
+        if self.view.getNumSelectedSegments() == 0:
+            self.popupMessage("No segments selected.")
+            return
+
+        # Import the dialog here to avoid circular dependencies if any
+        from splitdialog import SplitDialog
+        
+        dialog = SplitDialog(self)
+        if dialog.exec():
+            num_pieces = dialog.get_num_pieces()
+            self.view.splitSelectedSegments(num_pieces)
+            self.glcanvas.resetViewDisplay()
