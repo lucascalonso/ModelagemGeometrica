@@ -240,9 +240,13 @@ class CompGeom:
 
         # Check for collinear segments
         # **** COMPLETE HERE: COMPGEOM_02 ****
+        if sign123 == 'ZERO' and sign124 == 'ZERO':
+            return 'COLLINEAR', None, None, None
 
         # Check for second segment on the same side of first segment
         # **** COMPLETE HERE: COMPGEOM_03 ****
+        if sign123 == sign124:
+            return 'DO_NOT_INTERSECT', None, None, None
 
         # Get signs of oriented twice area for points p3-p4-p1 and for points p3-p4-p2
         sign341 = CompGeom.signArea2d(_p3, _p4, _p1)
@@ -250,23 +254,48 @@ class CompGeom:
 
         # Check for first segment on the same side of second segment
         # **** COMPLETE HERE: COMPGEOM_04 ****
+        if sign341 == sign342:
+            return 'DO_NOT_INTERSECT', None, None, None
 
         # Check for one point of second segment touching first segment.
         # Also compute the intersection point and the parametric values
         # ('t12' and 't34' between 0 and 1) along the two segments.
         # In this case, 't34' is either equal to 0 or equal to 1.
         # **** COMPLETE HERE: COMPGEOM_05 ****
+        if sign123 == 'ZERO' or sign124 == 'ZERO':
+            area341 = CompGeom.valArea2d(_p3, _p4, _p1)
+            area342 = CompGeom.valArea2d(_p3, _p4, _p2)
+            t12 = area341 / (area341 - area342)
+            if sign123 == 'ZERO':
+                return 'TOUCH', _p3, t12, 0.0
+            else:
+                return 'TOUCH', _p4, t12, 1.0
 
         # Check for one point of first segment touching second segment
         # Also compute the intersection point and the parametric values
         # ('t12' and 't34' between 0 and 1) along the two segments.
         # In this case, 't12' is either equal to 0 or equal to 1.
         # **** COMPLETE HERE: COMPGEOM_06 ****
+        if sign341 == 'ZERO' or sign342 == 'ZERO':
+            area123 = CompGeom.valArea2d(_p1, _p2, _p3)
+            area124 = CompGeom.valArea2d(_p1, _p2, _p4)
+            t34 = area123 / (area123 - area124)
+            if sign341 == 'ZERO':
+                return 'TOUCH', _p1, 0.0, t34
+            else:
+                return 'TOUCH', _p2, 1.0, t34
 
         # When get to this point, there is an intersection point of the
         # two segments. Compute parametric values of intersection point
         # along each segment.
         # **** COMPLETE HERE: COMPGEOM_07 ****
+        area341 = CompGeom.valArea2d(_p3, _p4, _p1)
+        area342 = CompGeom.valArea2d(_p3, _p4, _p2)
+        area123 = CompGeom.valArea2d(_p1, _p2, _p3)
+        area124 = CompGeom.valArea2d(_p1, _p2, _p4)
+
+        t12 = area341 / (area341 - area342)
+        t34 = area123 / (area123 - area124)
 
         # Compute intersection point (there are two equivalent options)
         v34 = _p4 - _p3

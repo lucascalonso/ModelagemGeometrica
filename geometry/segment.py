@@ -73,7 +73,28 @@ class Segment():
         for i in range(0, len(_pts)):
             status, clstPt, dmin, t, tangVec = curv2.closestPointParam(
                                     _pts[i].getX(), _pts[i].getY(), _params[i])
-            curv1, curv2 = curv2.split(t)
+            
+            split_res = curv2.split(t)
+            if len(split_res) == 1:
+                if t <= 0.01:
+                    curv1 = None
+                    curv2 = split_res[0]
+                elif t >= 0.99:
+                    curv1 = split_res[0]
+                    curv2 = None
+                else:
+                    # Split ocorreu no meio, mas retornou apenas 1 curva (provavelmente a primeira metade).
+                    # Precisamos reconstruir a segunda metade se for uma linha.
+                    curv1 = split_res[0]
+                    
+                    if curv2.getType() == 'LINE':
+                        from geometry.curves.line import Line
+                        # Cria a segunda metade do ponto de corte até o final original
+                        curv2 = Line([curv1.getPntEnd(), curv2.getPntEnd()])
+                    else:
+                        curv2 = None
+            else:
+                curv1, curv2 = split_res
 
             if curv1 is not None:
                 seg1 = Segment(curv1)
