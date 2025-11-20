@@ -5,7 +5,7 @@ from geometry.curves.polyline import Polyline
 from geometry.patch import Patch
 from compgeom.compgeom import CompGeom
 from appmodel import Segment
-
+from mesh.meshsegment import MeshSegment
 
 class AppModel:
 
@@ -634,3 +634,68 @@ class AppModel:
             del crv2
         else:
             self.controller.popupMessage(errorMsg)
+    # ---------------------------------------------------------------------
+
+    def setMeshParams(self, _n, _r):
+        # _n = número de subdivisões (intervalos) desejado por segmento
+        # gera n+1 pontos igualmente espaçados entre os extremos
+        for seg in self.segments:
+            if seg.isSelected():
+                seg.setSelected(False)
+                p0 = seg.getPntInit()
+                p1 = seg.getPntEnd()
+                x0, y0 = p0.getX(), p0.getY()
+                x1, y1 = p1.getX(), p1.getY()
+
+                n = max(1, _n)
+                sdvPts = []
+                for k in range(n + 1):
+                    t = k / n
+                    x = x0 + (x1 - x0) * t
+                    y = y0 + (y1 - y0) * t
+                    sdvPts.append(Pnt2D(x, y))
+
+                # guarda n (não n+1) como número de subdivisões
+                if hasattr(seg, "setNumberSdv"):
+                    seg.setNumberSdv(n)
+                seg.setSdvPoints(sdvPts)
+
+                # invalida malhas de patches que usam este segmento
+                for patch in self.patches:
+                    for patchSeg in patch.getSegments():
+                        if patchSeg == seg:
+                            patch.delMesh()
+
+    # -----------------------------------------------------------------------------------------------------------                        
+
+    def applyMeshToSelectedPatches(self):
+        # Acessa o objeto meshPatch através do controller, já que ele foi instanciado lá
+        if self.controller is None or not hasattr(self.controller, 'meshPatch'):
+            return
+
+        meshPatch = self.controller.meshPatch
+        
+        for patch in self.patches:
+            if patch.isSelected():
+                patch.setSelected(False)
+                
+                # Obtém a estrutura de loops do patch (número de subdivisões por lado)
+                loops = patch.getMeshLoops()
+                
+                # Configura o gerador de malha com os loops
+                status = meshPatch.setLoops(loops)
+                if status == False:
+                    self.controller.popupMessage("Invalid patch configuration for the selected mesh generator.\nFor Transfinite, ensure 4 logical sides.")
+                    continue
+                
+                # Obtém os pontos da fronteira discretizados (incluindo pontos de subdivisão)
+                bdryPts = patch.getMeshBdryPoints()
+                
+                # Gera a malha
+                status, meshPts, meshConn = meshPatch.generateMesh(bdryPts)
+                if status == False:
+                    self.controller.popupMessage("Error generating mesh.")
+                    continue
+                
+                # Armazena a malha gerada no patch
+                patch.setMesh(meshPts, meshConn)

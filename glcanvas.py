@@ -276,44 +276,54 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                 color = self.view.getColorPatchSelection()
             else:
                 color = self.view.getColorPatch()
-            glColor3f(color[0], color[1], color[2])
-            pts = self.view.getPatchPts(ptch)
-            if len(pts) == 3:
-                glBegin(GL_TRIANGLES)
-                glVertex2f(pts[0].getX(), pts[0].getY())
-                glVertex2f(pts[1].getX(), pts[1].getY())
-                glVertex2f(pts[2].getX(), pts[2].getY())
-                glEnd()
-            else:
-                # Without tesselation
-                # glBegin(GL_POLYGON)
-                # for j in range(len(pts)):
-                #     glVertex2d(pts[j].getX(),
-                #                pts[j].getY())
-                # glEnd()
-                # With tesselation
-                triangs = Tesselation.tessellate(pts)
-                for j in range(0, len(triangs)):
+            
+            # Verifica se o patch possui uma malha gerada
+            mesh = ptch.getMesh()
+            
+            if mesh is not None:
+                pts, conn = mesh
+                
+                # 1. Desenha os elementos preenchidos (Cor do Patch)
+                glColor3f(color[0], color[1], color[2])
+                for elem in conn:
                     glBegin(GL_TRIANGLES)
-                    glVertex2d(pts[triangs[j][0]].getX(),
-                               pts[triangs[j][0]].getY())
-                    glVertex2d(pts[triangs[j][1]].getX(),
-                               pts[triangs[j][1]].getY())
-                    glVertex2d(pts[triangs[j][2]].getX(),
-                               pts[triangs[j][2]].getY())
+                    for idx in elem:
+                        p = pts[idx]
+                        glVertex2f(p.getX(), p.getY())
                     glEnd()
-                # Draw tesselation triangles
-                # glColor3d(0.50, 0.50, 0.50)
-                # for j in range(0, len(triangs)):
-                #     glBegin(GL_LINE_LOOP)
-                #     glVertex2d(pts[triangs[j][0]].getX(),
-                #                pts[triangs[j][0]].getY())
-                #     glVertex2d(pts[triangs[j][1]].getX(),
-                #                pts[triangs[j][1]].getY())
-                #     glVertex2d(pts[triangs[j][2]].getX(),
-                #                pts[triangs[j][2]].getY())
-                #     glEnd()
 
+                # 2. Desenha o wireframe da malha (Linhas Pretas) para visualização
+                glColor3f(0.0, 0.0, 0.0) 
+                glLineWidth(1.0)
+                for elem in conn:
+                    glBegin(GL_LINE_LOOP)
+                    for idx in elem:
+                        p = pts[idx]
+                        glVertex2f(p.getX(), p.getY())
+                    glEnd()
+                    
+            else:
+                # Renderização padrão para patches sem malha (Tesselação)
+                glColor3f(color[0], color[1], color[2])
+                pts = self.view.getPatchPts(ptch)
+                if len(pts) == 3:
+                    glBegin(GL_TRIANGLES)
+                    glVertex2f(pts[0].getX(), pts[0].getY())
+                    glVertex2f(pts[1].getX(), pts[1].getY())
+                    glVertex2f(pts[2].getX(), pts[2].getY())
+                    glEnd()
+                else:
+                    triangs = Tesselation.tessellate(pts)
+                    for j in range(0, len(triangs)):
+                        glBegin(GL_TRIANGLES)
+                        glVertex2d(pts[triangs[j][0]].getX(),
+                                   pts[triangs[j][0]].getY())
+                        glVertex2d(pts[triangs[j][1]].getX(),
+                                   pts[triangs[j][1]].getY())
+                        glVertex2d(pts[triangs[j][2]].getX(),
+                                   pts[triangs[j][2]].getY())
+                        glEnd()
+                        
     # ---------------------------------------------------------------------
     def drawSegments(self):
         segments = self.view.getSegments()
@@ -330,6 +340,16 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             for j in range(len(pts)):
                 glVertex2f(pts[j].getX(), pts[j].getY())
             glEnd()
+
+            # *** INICIO ALTERACAO: Desenhar Pontos de Subdivisão ***
+            sdvPts = seg.getSdvPoints()
+            if sdvPts:
+                glColor3f(1.0, 0.0, 0.0) # Vermelho
+                glPointSize(4.0)
+                glBegin(GL_POINTS)
+                for p in sdvPts:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
 
     # ---------------------------------------------------------------------
     def drawPoints(self):
@@ -1093,3 +1113,5 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                 self.view.delSelectEntities()
                 self.resetViewDisplay()
                 self.update()
+    
+    

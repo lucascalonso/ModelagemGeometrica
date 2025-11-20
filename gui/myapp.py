@@ -1,11 +1,13 @@
-from PySide6.QtWidgets import QMainWindow, QToolBar, QWidget
+from PySide6.QtCore import QMetaObject
 from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QMainWindow, QWidget, QToolBar
 
 class Ui_MyApp(object):
     def setupUi(self, MainWindow: QMainWindow):
-        MainWindow.setObjectName("MainWindow")
-        MainWindow.setWindowTitle("Trabalho 4 - Lucas Alonso Correia")
-        MainWindow.setGeometry(100, 100, 800, 600)
+        if not MainWindow.objectName():
+            MainWindow.setObjectName("MainWindow")
+        MainWindow.resize(900, 600)
+        MainWindow.setWindowTitle("Trabalho 5 - Lucas Alonso Correia")
 
         # Central widget para o canvas
         self.canvas = QWidget(MainWindow)
@@ -94,3 +96,20 @@ class Ui_MyApp(object):
 
         self.actionCreateRegion = QAction("Create Region", MainWindow)
         modelToolbar.addAction(self.actionCreateRegion)
+
+        modelToolbar.addSeparator()
+
+        # --- Ações de Malha ---
+        self.actionMeshSegment = QAction("Boundary Mesh", MainWindow)
+        self.actionMeshSegment.setCheckable(True)
+        modelToolbar.addAction(self.actionMeshSegment)
+
+        self.actionDomainMesh = QAction("Domain Mesh", MainWindow)
+        self.actionDomainMesh.setCheckable(True)
+        modelToolbar.addAction(self.actionDomainMesh)
+
+        self.retranslateUi(MainWindow)
+        QMetaObject.connectSlotsByName(MainWindow)
+
+    def retranslateUi(self, MainWindow):
+        pass

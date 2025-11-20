@@ -8,6 +8,10 @@ from curvecollector import CurveCollector
 from curvereshape import CurveReshape
 from glcanvas import GLCanvas
 from gui.myapp import Ui_MyApp
+from mesh.meshgenerator import MeshGenerator
+from mesh.meshpatch import MeshPatch
+from mesh.meshsegmentdialog import MeshSegmentDialog
+from mesh.meshpatchdialog import MeshPatchDialog
 
 
 class AppController(QMainWindow, Ui_MyApp):
@@ -31,6 +35,13 @@ class AppController(QMainWindow, Ui_MyApp):
         self.gridDialog.lineEditXdir.setText(str(dX))
         self.gridDialog.lineEditYdir.setText(str(dY))
         self.gridDialog.checkBoxSnap.setChecked(isSnapOn)
+
+        # Create Mesh Patch object
+        self.meshPatch = MeshPatch()
+
+        # Create Mesh Dialogs
+        self.meshSegmentDialog = MeshSegmentDialog(self)
+        self.meshPatchDialog = MeshPatchDialog(self)
 
         # Create an OpenGL canvas and associate to the
         # canvas widget
@@ -77,6 +88,8 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionJoin.triggered.connect(self.joinSegments)
         self.actionSplit.triggered.connect(self.on_actionSplit)
         self.actionCreateRegion.triggered.connect(self.createRegion)
+        self.actionMeshSegment.triggered.connect(self.on_actionMeshSegment)
+        self.actionDomainMesh.triggered.connect(self.on_actionDomainMesh)
 
         
     ###########################################################
@@ -86,6 +99,8 @@ class AppController(QMainWindow, Ui_MyApp):
     ###########################################################
     def closeEvent(self, _event):
         self.gridDialog.close()
+        self.meshSegmentDialog.close()
+        self.meshPatchDialog.close()
         _event.accept()
 
     ###########################################################
@@ -225,9 +240,24 @@ class AppController(QMainWindow, Ui_MyApp):
         self.glcanvas.resetViewDisplay()
 
     # Join two selected segments
-    #def joinSegments(self):
-    #    self.model.joinSelectedSegments()
-    #    self.glcanvas.resetViewDisplay()
+    def joinSegments(self):
+        self.view.joinSelectedSegments(self.glcanvas.pickTol)
+        self.glcanvas.resetViewDisplay()
+
+    def on_actionSplit(self):
+        # Use the new method to check if any segments are selected
+        if self.view.getNumSelectedSegments() == 0:
+            self.popupMessage("No segments selected.")
+            return
+
+        # Import the dialog here to avoid circular dependencies if any
+        from splitdialog import SplitDialog
+        
+        dialog = SplitDialog(self)
+        if dialog.exec():
+            num_pieces = dialog.get_num_pieces()
+            self.view.splitSelectedSegments(num_pieces)
+            self.glcanvas.resetViewDisplay()
 
     ###########################################################
     #                                                         #
@@ -253,22 +283,68 @@ class AppController(QMainWindow, Ui_MyApp):
         msg.exec()
 
     ###########################################################
+    #                                                         #
+    #                    Métodos Mesh                         #
+    #                                                         #
+    ###########################################################
 
-    def joinSegments(self):
-        self.view.joinSelectedSegments(self.glcanvas.pickTol)
-        self.glcanvas.resetViewDisplay()
+    def on_actionMeshSegment(self):
+        self.meshSegmentDialog.show()
+        self.actionMeshSegment.setChecked(True)
 
-    def on_actionSplit(self):
-        # Use the new method to check if any segments are selected
-        if self.view.getNumSelectedSegments() == 0:
-            self.popupMessage("No segments selected.")
+    def meshSegmentApply(self):
+        try:
+            n = int(self.meshSegmentDialog.lineEditNumSubdiv.text())
+            r = float(self.meshSegmentDialog.lineEditRatio.text())
+        except ValueError:
             return
 
-        # Import the dialog here to avoid circular dependencies if any
-        from splitdialog import SplitDialog
+        self.model.setMeshParams(n, r)
+        self.glcanvas.resetViewDisplay()
+
+    def meshSegmentClose(self):
+        self.actionMeshSegment.setChecked(False)
+        self.meshSegmentDialog.hide()
+
+    def meshSegmentCloseEvent(self):
+        self.actionMeshSegment.setChecked(False)
+
+    def on_actionDomainMesh(self):
+        isTurnedOn = self.meshPatch.getDisplayInfo()
+        if not isTurnedOn:
+            self.meshPatchDialog.show()
+            self.meshPatch.setDisplayInfo(True)
+            self.actionDomainMesh.setChecked(True)
+        else:
+            self.meshPatchDialog.hide()
+            self.meshPatch.setDisplayInfo(False)
+            self.actionDomainMesh.setChecked(False)
+
+    def meshPatchApply(self):
+        # Verifica qual opção foi selecionada no diálogo
+        if self.meshPatchDialog.radioButtonBilinear.isChecked():
+            type = MeshGenerator.TRANSFIN_BILINEAR
+        elif self.meshPatchDialog.radioButtonTrilinear.isChecked():
+            type = MeshGenerator.TRANSFIN_TRILINEAR
+        elif self.meshPatchDialog.radioButtonDelaunay.isChecked():
+            type = MeshGenerator.DELAUNAY_TRIANGULATION
         
-        dialog = SplitDialog(self)
-        if dialog.exec():
-            num_pieces = dialog.get_num_pieces()
-            self.view.splitSelectedSegments(num_pieces)
-            self.glcanvas.resetViewDisplay()
+        # Configura o gerador no modelo
+        self.meshPatch.setMeshGenerator(type)
+        
+        # Aplica a geração da malha aos patches selecionados
+        self.model.applyMeshToSelectedPatches()
+        
+        # Atualiza a visualização
+        self.glcanvas.resetViewDisplay()
+
+    def meshPatchClose(self):
+        self.actionDomainMesh.setChecked(False)
+        self.meshPatch.setDisplayInfo(False)
+        self.meshPatchDialog.hide()
+
+    def meshPatchCloseEvent(self):
+        self.actionDomainMesh.setChecked(False)
+        self.meshPatch.setDisplayInfo(False)
+
+    

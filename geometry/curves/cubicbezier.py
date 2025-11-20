@@ -17,6 +17,7 @@ class CubicBezier(Curve):
                     self.pts.append(Pnt2D(float(p[0]), float(p[1])))
         self.nPts = len(self.pts)
 
+    # ---------------------------------------------------------------------
     def getNumberOfCtrlPoints(self):
         return self.nPts
 
@@ -26,7 +27,7 @@ class CubicBezier(Curve):
 
     # ---------------------------------------------------------------------
     def addCtrlPoint(self, _x, _y):
-        # Limita a 4 pontos de controle (p0..p3)
+        # Limita a 4 pontos de controle
         if self.nPts >= 4:
             return False
         self.pts.append(Pnt2D(_x, _y))
@@ -54,7 +55,7 @@ class CubicBezier(Curve):
             return False
         if self.nPts == 2:
             return True
-        # todos colineares com p0->p3
+        # todos intermediários colineares com p0->p3
         for p in self.pts[1:-1]:
             if not CompGeom.pickLine(self.pts[0], self.pts[-1], p, _tol):
                 return False
@@ -71,44 +72,56 @@ class CubicBezier(Curve):
         level = [Pnt2D(p.getX(), p.getY()) for p in ctrl]
         n = len(level)
         for r in range(1, n):
+            nxt = []
             for i in range(n - r):
-                x = (1.0 - t) * level[i].getX() + t * level[i + 1].getX()
-                y = (1.0 - t) * level[i].getY() + t * level[i + 1].getY()
-                level[i] = Pnt2D(x, y)
+                x = (1 - t) * level[i].getX() + t * level[i + 1].getX()
+                y = (1 - t) * level[i].getY() + t * level[i + 1].getY()
+                nxt.append(Pnt2D(x, y))
+            level = nxt
         return level[0]
 
+    # ---------------------------------------------------------------------
     def _derivative_vec(self, ctrl, t):
-        if len(ctrl) < 2:
+        # Derivada da Bézier cúbica: 3[(1-t)^2 (p1-p0) + 2(1-t)t (p2-p1) + t^2 (p3-p2)]
+        if self.nPts < 2:
             return Pnt2D(0.0, 0.0)
-        d = []
-        for i in range(len(ctrl) - 1):
-            d.append(Pnt2D(ctrl[i + 1].getX() - ctrl[i].getX(), ctrl[i + 1].getY() - ctrl[i].getY()))
-        if len(d) == 1:
-            return d[0]
-        if len(d) == 2:
-            x = (1.0 - t) * d[0].getX() + t * d[1].getX()
-            y = (1.0 - t) * d[0].getY() + t * d[1].getY()
-            return Pnt2D(x, y)
-        p = self._de_casteljau_point(d, t)
-        return Pnt2D(3.0 * p.getX(), 3.0 * p.getY())
+        if self.nPts < 4:
+            # fallback linear/quadrático
+            if self.nPts == 2:
+                return Pnt2D(self.pts[1].getX() - self.pts[0].getX(),
+                             self.pts[1].getY() - self.pts[0].getY())
+            # quadrática
+            p0, p1, p2 = self.pts
+            dx = 2 * (1 - t) * (p1.getX() - p0.getX()) + 2 * t * (p2.getX() - p1.getX())
+            dy = 2 * (1 - t) * (p1.getY() - p0.getY()) + 2 * t * (p2.getY() - p1.getY())
+            return Pnt2D(dx, dy)
+        p0, p1, p2, p3 = self.pts
+        dx = 3 * ((1 - t) ** 2) * (p1.getX() - p0.getX()) + \
+             6 * (1 - t) * t * (p2.getX() - p1.getX()) + \
+             3 * (t ** 2) * (p3.getX() - p2.getX())
+        dy = 3 * ((1 - t) ** 2) * (p1.getY() - p0.getY()) + \
+             6 * (1 - t) * t * (p2.getY() - p1.getY()) + \
+             3 * (t ** 2) * (p3.getY() - p2.getY())
+        return Pnt2D(dx, dy)
 
     # ---------------------------------------------------------------------
     def evalPoint(self, _t):
+        t = max(0.0, min(1.0, _t))
         if self.nPts == 0:
             return Pnt2D(0.0, 0.0)
-        t = max(0.0, min(1.0, _t))
-        pts = self.pts
-        if len(pts) <= 2:
-            if len(pts) == 1:
-                return Pnt2D(pts[0].getX(), pts[0].getY())
-            return Pnt2D((1 - t) * pts[0].getX() + t * pts[1].getX(),
-                         (1 - t) * pts[0].getY() + t * pts[1].getY())
-        if len(pts) == 3:
-            p0, p1, p2 = pts
+        if self.nPts == 1:
+            return Pnt2D(self.pts[0].getX(), self.pts[0].getY())
+        if self.nPts == 2:
+            x = (1 - t) * self.pts[0].getX() + t * self.pts[1].getX()
+            y = (1 - t) * self.pts[0].getY() + t * self.pts[1].getY()
+            return Pnt2D(x, y)
+        if self.nPts == 3:
+            # trata como quadrática
+            p0, p1, p2 = self.pts
             x = ((1 - t) ** 2) * p0.getX() + 2 * (1 - t) * t * p1.getX() + (t ** 2) * p2.getX()
             y = ((1 - t) ** 2) * p0.getY() + 2 * (1 - t) * t * p1.getY() + (t ** 2) * p2.getY()
             return Pnt2D(x, y)
-        return self._de_casteljau_point(pts, t)
+        return self._de_casteljau_point(self.pts, t)
 
     # ---------------------------------------------------------------------
     def evalPointTangent(self, _t):
@@ -124,7 +137,7 @@ class CubicBezier(Curve):
 
     # ---------------------------------------------------------------------
     def splitRaw(self, _t):
-        if self.nPts == 0:
+        if self.nPts < 4:
             return CubicBezier([]), CubicBezier([])
         t = max(0.0, min(1.0, _t))
         triangle = []
@@ -132,21 +145,20 @@ class CubicBezier(Curve):
         triangle.append(level)
         n = len(level)
         for r in range(1, n):
-            next_level = []
+            nxt = []
             for i in range(n - r):
-                x = (1.0 - t) * level[i].getX() + t * level[i + 1].getX()
-                y = (1.0 - t) * level[i].getY() + t * level[i + 1].getY()
-                next_level.append(Pnt2D(x, y))
-            triangle.append(next_level)
-            level = next_level
+                x = (1 - t) * level[i].getX() + t * level[i + 1].getX()
+                y = (1 - t) * level[i].getY() + t * level[i + 1].getY()
+                nxt.append(Pnt2D(x, y))
+            triangle.append(nxt)
+            level = nxt
         left_pts = [triangle[i][0] for i in range(len(triangle))]
         right_pts = [triangle[i][-1] for i in range(len(triangle))]
         return CubicBezier(left_pts), CubicBezier(right_pts)
 
     # ---------------------------------------------------------------------
     def split(self, _t):
-        left, right = self.splitRaw(_t)
-        return left, right
+        return self.splitRaw(_t)
 
     # ---------------------------------------------------------------------
     def join(self, _joinCurve, _pt, _tol):
@@ -154,7 +166,8 @@ class CubicBezier(Curve):
 
     # ---------------------------------------------------------------------
     def getEquivPolyline(self):
-        samples = 32
+        # Menos pontos (amostra reduzida) para desenhar mais leve
+        samples = 16
         if self.nPts == 0:
             return []
         pts = []
@@ -165,12 +178,8 @@ class CubicBezier(Curve):
 
     # ---------------------------------------------------------------------
     def getEquivPolylineCollecting(self, _pt):
-        # Preview:
-        # - n==0: []
-        # - n==1: [p0,temp] (line)
-        # - n==2: quadratic with temp as p2
-        # - n==3: cubic with temp as p3
-        # - n>=4: final curve
+        # Preview incremental com amostragem reduzida
+        samples = 16
         if self.nPts == 0:
             return []
         if self.nPts == 1:
@@ -182,30 +191,34 @@ class CubicBezier(Curve):
             if _pt is None:
                 return [self.pts[0], self.pts[1]]
             temp = Pnt2D(_pt.getX(), _pt.getY()) if hasattr(_pt, 'getX') else Pnt2D(float(_pt[0]), float(_pt[1]))
-            qb = [self.pts[0], self.pts[1], temp]
+            # trata como quadrática provisória
+            quad = [self.pts[0], self.pts[1], temp]
             out = []
-            samples = 32
-            p0, p1, p2 = qb
             for i in range(samples + 1):
                 t = i / samples
-                out.append(Pnt2D(((1 - t) ** 2) * p0.getX() + 2 * (1 - t) * t * p1.getX() + (t ** 2) * p2.getX(),
-                                  ((1 - t) ** 2) * p0.getY() + 2 * (1 - t) * t * p1.getY() + (t ** 2) * p2.getY()))
+                x = ((1 - t) ** 2) * quad[0].getX() + 2 * (1 - t) * t * quad[1].getX() + (t ** 2) * quad[2].getX()
+                y = ((1 - t) ** 2) * quad[0].getY() + 2 * (1 - t) * t * quad[1].getY() + (t ** 2) * quad[2].getY()
+                out.append(Pnt2D(x, y))
             return out
         if self.nPts == 3:
             if _pt is None:
-                qb = self.pts[:3]
+                # quadrática final
+                quad = self.pts
                 out = []
-                samples = 32
-                p0, p1, p2 = qb
                 for i in range(samples + 1):
                     t = i / samples
-                    out.append(Pnt2D(((1 - t) ** 2) * p0.getX() + 2 * (1 - t) * t * p1.getX() + (t ** 2) * p2.getX(),
-                                      ((1 - t) ** 2) * p0.getY() + 2 * (1 - t) * t * p1.getY() + (t ** 2) * p2.getY()))
+                    x = ((1 - t) ** 2) * quad[0].getX() + 2 * (1 - t) * t * quad[1].getX() + (t ** 2) * quad[2].getX()
+                    y = ((1 - t) ** 2) * quad[0].getY() + 2 * (1 - t) * t * quad[1].getY() + (t ** 2) * quad[2].getY()
+                    out.append(Pnt2D(x, y))
                 return out
             temp = Pnt2D(_pt.getX(), _pt.getY()) if hasattr(_pt, 'getX') else Pnt2D(float(_pt[0]), float(_pt[1]))
-            cb = [self.pts[0], self.pts[1], self.pts[2], temp]
-            samples = 32
-            return [self._de_casteljau_point(cb, i / samples) for i in range(samples + 1)]
+            ctrl = [self.pts[0], self.pts[1], self.pts[2], temp]
+            out = []
+            for i in range(samples + 1):
+                t = i / samples
+                out.append(self._de_casteljau_point(ctrl, t))
+            return out
+        # curva final
         return self.getEquivPolyline()
 
     # ---------------------------------------------------------------------

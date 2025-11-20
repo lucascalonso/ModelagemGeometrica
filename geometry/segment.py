@@ -40,6 +40,40 @@ class Segment():
     # ---------------------------------------------------------------------
     def getPolylinePts(self):
         return self.polyline
+    
+    # ---------------------------------------------------------------------
+    # ---------------------------------------------------------------------
+    def setNumberSdv(self, _nSdv):
+        self.nSdv = _nSdv
+
+    # ---------------------------------------------------------------------
+    def getNumberSdv(self):
+        if self.nSdv is None:
+            return 1
+        return self.nSdv
+
+    # ---------------------------------------------------------------------
+    def setSdvPoints(self, _sdvPoints):
+        # Se temos N subdivisões, temos N+1 pontos.
+        # Logo, N = len(points) - 1
+        if len(_sdvPoints) > 0:
+            self.nSdv = len(_sdvPoints) - 1
+        else:
+            self.nSdv = 1
+        self.sdvPoints = _sdvPoints
+
+    # ---------------------------------------------------------------------
+    def delSdvPoints(self):
+        if self.sdvPoints is not []:
+            del self.sdvPoints
+            self.sdvPoints = []
+        self.nSdv = None
+
+    # ---------------------------------------------------------------------
+    def getSdvPoints(self):
+        if self.nSdv is None:
+            return []
+        return self.sdvPoints
 
     # ---------------------------------------------------------------------
     def getInitTangent(self):

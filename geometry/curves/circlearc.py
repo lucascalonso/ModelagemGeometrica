@@ -16,198 +16,209 @@ class CircleArc(Curve):
                 except Exception:
                     self.pts.append(Pnt2D(float(p[0]), float(p[1])))
         self.nPts = len(self.pts)
+        self._center = None
+        self._radius = 0.0
+        self._a0 = 0.0
+        self._a1 = 0.0
+        self._poly = []
+
+        if self.nPts >= 3:
+            self._recompute()
 
     def getNumberOfCtrlPoints(self):
         return self.nPts
 
-    # ---------------------------------------------------------------------
     def isUnlimited(self):
         return False
 
-    # ---------------------------------------------------------------------
     def addCtrlPoint(self, _x, _y):
-        # Limita a 3 pontos (centro, início, fim)
         if self.nPts >= 3:
             return False
         self.pts.append(Pnt2D(_x, _y))
         self.nPts = len(self.pts)
+        if self.nPts == 3:
+            self._recompute()
+        else:
+            self._poly.clear()
         return True
 
-    # ---------------------------------------------------------------------
     def isPossible(self):
-        # center, start, end
-        return self.nPts >= 3
+        return self.nPts == 3 and self._radius > 0.0
 
-    # ---------------------------------------------------------------------
     def getCtrlPoints(self):
         return [p for p in self.pts]
 
-    # ---------------------------------------------------------------------
     def setCtrlPoint(self, _id, _x, _y, _tol):
         if _id < 0 or _id >= self.nPts:
             return False
         self.pts[_id] = Pnt2D(_x, _y)
+        if self.nPts == 3:
+            self._recompute()
         return True
 
-    # ---------------------------------------------------------------------
     def isStraight(self, _tol):
         return False
 
-    # ---------------------------------------------------------------------
     def isClosed(self):
         return False
 
-    # ---------------------------------------------------------------------
-    def _center_radius(self, temp=None):
-        if self.nPts == 0:
+    def _recompute(self):
+        self._poly.clear()
+        c, r = self._compute_center_radius()
+        if r <= 0.0:
+            self._radius = 0.0
+            return
+        self._center = c
+        self._radius = r
+        self._a0, self._a1 = self._compute_angles(c, self.pts[1], self.pts[2])
+
+    def _compute_center_radius(self):
+        if self.nPts < 3:
             return Pnt2D(0.0, 0.0), 0.0
-        c = self.pts[0]
-        if self.nPts >= 2:
-            r = Pnt2D.euclidiandistance(c, self.pts[1])
-        else:
-            if temp is None:
-                r = 0.0
-            else:
-                t = temp if isinstance(temp, Pnt2D) else Pnt2D(temp.getX(), temp.getY())
-                r = Pnt2D.euclidiandistance(c, t)
+        p0, p1, p2 = self.pts
+        # Circumcenter of triangle p0,p1,p2
+        x0, y0 = p0.getX(), p0.getY()
+        x1, y1 = p1.getX(), p1.getY()
+        x2, y2 = p2.getX(), p2.getY()
+        d = 2.0 * (x0*(y1 - y2) + x1*(y2 - y0) + x2*(y0 - y1))
+        if abs(d) < 1e-14:
+            return Pnt2D(0.0, 0.0), 0.0
+        ux = ((x0**2 + y0**2)*(y1 - y2) + (x1**2 + y1**2)*(y2 - y0) + (x2**2 + y2**2)*(y0 - y1)) / d
+        uy = ((x0**2 + y0**2)*(x2 - x1) + (x1**2 + y1**2)*(x0 - x2) + (x2**2 + y2**2)*(x1 - x0)) / d
+        c = Pnt2D(ux, uy)
+        r = Pnt2D.euclidiandistance(c, p0)
         return c, r
 
-    # ---------------------------------------------------------------------
-    def _angles(self, c, start_pt, end_pt):
-        a0 = math.atan2(start_pt.getY() - c.getY(), start_pt.getX() - c.getX())
-        a1 = math.atan2(end_pt.getY() - c.getY(), end_pt.getX() - c.getX())
-        # CCW from a0 to a1
+    def _compute_angles(self, c, start_pt, end_pt):
+        def ang(pt):
+            a = math.atan2(pt.getY() - c.getY(), pt.getX() - c.getX())
+            return a if a >= 0.0 else a + 2.0 * math.pi
+        a0 = ang(start_pt)
+        a1 = ang(end_pt)
+        # Preserve shortest positive sweep (counter-clockwise)
         if a1 < a0:
             a1 += 2.0 * math.pi
         return a0, a1
 
-    # ---------------------------------------------------------------------
-    def _sample_arc(self, c, r, a0, a1, samples=64):
-        if r <= 0.0:
-            return [Pnt2D(c.getX(), c.getY())]
-        out = []
+    def _sample_arc(self, samples=24):
+        self._poly.clear()
+        if not self.isPossible():
+            return
+        step = (self._a1 - self._a0) / samples
         for i in range(samples + 1):
-            t = i / samples
-            ang = a0 + t * (a1 - a0)
-            out.append(Pnt2D(c.getX() + r * math.cos(ang), c.getY() + r * math.sin(ang)))
-        return out
+            a = self._a0 + i * step
+            x = self._center.getX() + self._radius * math.cos(a)
+            y = self._center.getY() + self._radius * math.sin(a)
+            self._poly.append(Pnt2D(x, y))
 
-    # ---------------------------------------------------------------------
     def evalPoint(self, _t):
-        if self.nPts < 3:
-            if self.nPts == 0:
-                return Pnt2D(0.0, 0.0)
-            if self.nPts == 1:
-                return Pnt2D(self.pts[0].getX(), self.pts[0].getY())
-            return Pnt2D(self.pts[1].getX(), self.pts[1].getY())
-        c = self.pts[0]
-        r = Pnt2D.euclidiandistance(c, self.pts[1])
-        a0, a1 = self._angles(c, self.pts[1], self.pts[2])
+        if not self.isPossible():
+            return Pnt2D(0.0, 0.0)
         t = max(0.0, min(1.0, _t))
-        ang = a0 + t * (a1 - a0)
-        return Pnt2D(c.getX() + r * math.cos(ang), c.getY() + r * math.sin(ang))
+        a = self._a0 + t * (self._a1 - self._a0)
+        x = self._center.getX() + self._radius * math.cos(a)
+        y = self._center.getY() + self._radius * math.sin(a)
+        return Pnt2D(x, y)
 
-    # ---------------------------------------------------------------------
     def evalPointTangent(self, _t):
         pt = self.evalPoint(_t)
-        if self.nPts < 2:
+        if not self.isPossible():
             return pt, Pnt2D(0.0, 0.0)
-        c, r = self._center_radius()
-        if r == 0.0:
-            return pt, Pnt2D(0.0, 0.0)
-        vx = pt.getX() - c.getX()
-        vy = pt.getY() - c.getY()
-        norm = math.hypot(vx, vy)
-        if norm == 0.0:
-            return pt, Pnt2D(0.0, 0.0)
-        tx, ty = -vy / norm, vx / norm
-        return pt, Pnt2D(tx, ty)
+        t = max(0.0, min(1.0, _t))
+        a = self._a0 + t * (self._a1 - self._a0)
+        dx = -self._radius * math.sin(a)
+        dy = self._radius * math.cos(a)
+        nrm = math.hypot(dx, dy)
+        tang = Pnt2D(dx / nrm, dy / nrm) if nrm > 0.0 else Pnt2D(0.0, 0.0)
+        return pt, tang
 
-    # ---------------------------------------------------------------------
+    def splitRaw(self, _t):
+        if not self.isPossible():
+            return CircleArc([]), CircleArc([])
+        t = max(0.0, min(1.0, _t))
+        a_mid = self._a0 + t * (self._a1 - self._a0)
+        mid_pt = Pnt2D(self._center.getX() + self._radius * math.cos(a_mid),
+                       self._center.getY() + self._radius * math.sin(a_mid))
+        left = CircleArc([self.pts[0], self.pts[1], mid_pt])
+        right = CircleArc([self.pts[0], mid_pt, self.pts[2]])
+        return left, right
+
+    def split(self, _t):
+        l, r = self.splitRaw(_t)
+        l._sample_arc()
+        r._sample_arc()
+        return l, r
+
+    def join(self, _joinCurve, _pt, _tol):
+        return False, None, 'Join not supported for CircleArc.'
+
     def getEquivPolyline(self):
-        if self.nPts < 3:
-            if self.nPts == 2:
-                return [self.pts[0], self.pts[1]]
+        if not self.isPossible():
             return []
-        c = self.pts[0]
-        r = Pnt2D.euclidiandistance(c, self.pts[1])
-        a0, a1 = self._angles(c, self.pts[1], self.pts[2])
-        return self._sample_arc(c, r, a0, a1, 64)
+        if not self._poly:
+            self._sample_arc()
+        return [p for p in self._poly]
 
-    # ---------------------------------------------------------------------
     def getEquivPolylineCollecting(self, _pt):
         if self.nPts == 0:
             return []
         if self.nPts == 1:
-            if _pt is None:
-                return [self.pts[0]]
-            temp = Pnt2D(_pt.getX(), _pt.getY()) if hasattr(_pt, 'getX') else Pnt2D(float(_pt[0]), float(_pt[1]))
-            return [self.pts[0], temp]
-        if self.nPts == 2:
-            if _pt is None:
-                return [self.pts[0], self.pts[1]]
-            temp = Pnt2D(_pt.getX(), _pt.getY()) if hasattr(_pt, 'getX') else Pnt2D(float(_pt[0]), float(_pt[1]))
-            c = self.pts[0]
-            r = Pnt2D.euclidiandistance(c, self.pts[1])
-            a0, a1 = self._angles(c, self.pts[1], temp)
-            return self._sample_arc(c, r, a0, a1, 64)
+            return [self.pts[0]]
+        if self.nPts == 2 and _pt is not None:
+            temp = Pnt2D(_pt.getX(), _pt.getY()) if hasattr(_pt, 'getX') else _pt
+            trial = CircleArc([self.pts[0], self.pts[1], temp])
+            if trial.isPossible():
+                trial._sample_arc(samples=16)
+                return trial.getEquivPolyline()
+            return [self.pts[0], self.pts[1], temp]
+        if not self.isPossible():
+            return self.getCtrlPoints()
         return self.getEquivPolyline()
 
-    # ---------------------------------------------------------------------
-    def _closest_on_polyline(self, poly, x, y):
-        if len(poly) < 2:
-            pt = poly[0] if poly else Pnt2D(0.0, 0.0)
-            return pt, float('inf'), 0, 0.0
-        q = Pnt2D(x, y)
-        dmin = float('inf')
-        cl = Pnt2D(0.0, 0.0)
-        seg = 0
-        arc = 0.0
-        acc = 0.0
-        for i in range(len(poly) - 1):
-            d, cpt, t = CompGeom.getClosestPointSegment(poly[i], poly[i + 1], q)
-            if d < dmin:
-                dmin = d
-                cl = cpt
-                seg = i
-                arc = acc + math.hypot(cpt.getX() - poly[i].getX(), cpt.getY() - poly[i].getY())
-            acc += math.hypot(poly[i + 1].getX() - poly[i].getX(), poly[i + 1].getY() - poly[i].getY())
-        return cl, dmin, seg, arc
-
-    # ---------------------------------------------------------------------
-    def closestPointSeg(self, _x, _y):
-        poly = self.getEquivPolyline()
-        return self._closest_on_polyline(poly, _x, _y)
-
-    # ---------------------------------------------------------------------
     def closestPoint(self, _x, _y):
-        cl, dmin, seg, arc = self.closestPointSeg(_x, _y)
-        length = self.length()
-        t = 0.0 if length == 0.0 else arc / length
-        pt, tang = self.evalPointTangent(t)
-        return True, cl, dmin, t, tang
+        if not self.isPossible():
+            return True, Pnt2D(0.0, 0.0), 0.0, 0.0, Pnt2D(0.0, 0.0)
+        q = Pnt2D(_x, _y)
+        # Project onto circle
+        dx = q.getX() - self._center.getX()
+        dy = q.getY() - self._center.getY()
+        d = math.hypot(dx, dy)
+        if d == 0.0:
+            cand = Pnt2D(self._center.getX() + self._radius * math.cos(self._a0),
+                         self._center.getY() + self._radius * math.sin(self._a0))
+        else:
+            cand = Pnt2D(self._center.getX() + self._radius * dx / d,
+                         self._center.getY() + self._radius * dy / d)
+        # Clamp angle to arc
+        ang = math.atan2(cand.getY() - self._center.getY(), cand.getX() - self._center.getX())
+        if ang < 0.0:
+            ang += 2.0 * math.pi
+        # Normalize into [a0,a1] (allow a1 > 2π)
+        a = ang
+        if a < self._a0:
+            a = self._a0
+        if a > self._a1:
+            a = self._a1
+        clamped = Pnt2D(self._center.getX() + self._radius * math.cos(a),
+                        self._center.getY() + self._radius * math.sin(a))
+        t = (a - self._a0) / (self._a1 - self._a0) if self._a1 != self._a0 else 0.0
+        dist = abs(d - self._radius)
+        _, tang = self.evalPointTangent(t)
+        return True, clamped, dist, t, tang
 
-    # ---------------------------------------------------------------------
+    def closestPointParam(self, _x, _y, _tStart):
+        return self.closestPoint(_x, _y)
+
     def getBoundBox(self):
-        poly = self.getEquivPolyline() if self.nPts >= 3 else self.getEquivPolylineCollecting(None)
-        if not poly:
+        if not self.isPossible():
             return 0.0, 0.0, 0.0, 0.0
-        xs = [p.getX() for p in poly]
-        ys = [p.getY() for p in poly]
+        # Sample endpoints + mid for bbox
+        pts = [self.evalPoint(0.0), self.evalPoint(1.0), self.evalPoint(0.5)]
+        xs = [p.getX() for p in pts]
+        ys = [p.getY() for p in pts]
         return min(xs), max(xs), min(ys), max(ys)
 
-    # ---------------------------------------------------------------------
-    def getPntInit(self):
-        return self.pts[0] if self.nPts >= 1 else Pnt2D(0.0, 0.0)
-
-    # ---------------------------------------------------------------------
-    def getPntEnd(self):
-        return self.pts[-1] if self.nPts >= 1 else Pnt2D(0.0, 0.0)
-
-    # ---------------------------------------------------------------------
     def length(self):
-        poly = self.getEquivPolyline()
-        L = 0.0
-        for i in range(len(poly) - 1):
-            L += math.hypot(poly[i + 1].getX() - poly[i].getX(), poly[i + 1].getY() - poly[i].getY())
-        return L
+        if not self.isPossible():
+            return 0.0
+        return self._radius * (self._a1 - self._a0)
