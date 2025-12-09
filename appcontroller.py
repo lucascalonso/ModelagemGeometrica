@@ -20,7 +20,9 @@ class AppController(QMainWindow, Ui_MyApp):
         super().setupUi(self)
 
         # Create model object, view object, and curve collector object
-        self.model = AppModel(self)
+        # CORREÇÃO: Instancia AppModel sem passar 'self'
+        self.model = AppModel() 
+        
         self.collector = CurveCollector(self.model)
         self.reshape = CurveReshape(self.model)
         self.view = AppView(self.model, self.reshape)
@@ -45,7 +47,7 @@ class AppController(QMainWindow, Ui_MyApp):
 
         # Create an OpenGL canvas and associate to the
         # canvas widget
-        self.glcanvas = GLCanvas(self, self.view, self.collector, self.reshape)
+        self.glcanvas = GLCanvas(self)
         self.glcanvas.setParent(self.canvas)
         horizontalLayout = QHBoxLayout(self.canvas)
         horizontalLayout.setContentsMargins(0, 0, 0, 0)
@@ -119,8 +121,9 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionCircleArc.setChecked(False)
 
     def on_actionDelete(self):
-        self.view.delSelectEntities()
-        self.glcanvas.resetViewDisplay()
+        # Delega para o HeController
+        self.model.getHeController().deleteSelectedEntities()
+        self.glcanvas.update()
 
     def on_actionLine(self):
         self.glcanvas.setMouseAction('COLLECTION')
@@ -236,17 +239,19 @@ class AppController(QMainWindow, Ui_MyApp):
     ###########################################################
     # Intersection of two selected segments
     def intersectSegments(self):
-        self.model.intersectSelectedSegments()
-        self.glcanvas.resetViewDisplay()
+        # Delega para o HeController
+        self.model.getHeController().intersectSelectedSegments()
+        self.glcanvas.update()
 
     # Join two selected segments
     def joinSegments(self):
-        self.view.joinSelectedSegments(self.glcanvas.pickTol)
-        self.glcanvas.resetViewDisplay()
+        # Delega para o HeController (se existir) ou mantém lógica antiga se necessário
+        # self.model.getHeController().joinSelectedSegments()
+        self.glcanvas.update()
 
     def on_actionSplit(self):
-        # Use the new method to check if any segments are selected
-        if self.view.getNumSelectedSegments() == 0:
+        # Verifica seleção via HeController
+        if self.model.getHeController().getNumSelectedSegments() == 0:
             self.popupMessage("No segments selected.")
             return
 
@@ -256,8 +261,9 @@ class AppController(QMainWindow, Ui_MyApp):
         dialog = SplitDialog(self)
         if dialog.exec():
             num_pieces = dialog.get_num_pieces()
-            self.view.splitSelectedSegments(num_pieces)
-            self.glcanvas.resetViewDisplay()
+            # Delega split para HeController
+            self.model.getHeController().splitSelectedSegments(num_pieces)
+            self.glcanvas.update()
 
     ###########################################################
     #                                                         #
@@ -266,8 +272,9 @@ class AppController(QMainWindow, Ui_MyApp):
     ###########################################################
     # Create region (patch) using selected segments
     def createRegion(self):
-        self.model.createPatch()
-        self.glcanvas.resetViewDisplay()
+        # Delega diretamente para o HeController
+        self.model.getHeController().createPatch()
+        self.glcanvas.update()
 
     ###########################################################
     #                                                         #
@@ -299,8 +306,9 @@ class AppController(QMainWindow, Ui_MyApp):
         except ValueError:
             return
 
-        self.model.setMeshParams(n, r)
-        self.glcanvas.resetViewDisplay()
+        # Delega configuração de malha para HeController
+        self.model.getHeController().setMeshParams(n, r)
+        self.glcanvas.update()
 
     def meshSegmentClose(self):
         self.actionMeshSegment.setChecked(False)
@@ -332,11 +340,11 @@ class AppController(QMainWindow, Ui_MyApp):
         # Configura o gerador no modelo
         self.meshPatch.setMeshGenerator(type)
         
-        # Aplica a geração da malha aos patches selecionados
-        self.model.applyMeshToSelectedPatches()
+        # Aplica a geração da malha aos patches selecionados via HeController
+        self.model.getHeController().applyMeshToSelectedPatches()
         
         # Atualiza a visualização
-        self.glcanvas.resetViewDisplay()
+        self.glcanvas.update()
 
     def meshPatchClose(self):
         self.actionDomainMesh.setChecked(False)
@@ -346,5 +354,3 @@ class AppController(QMainWindow, Ui_MyApp):
     def meshPatchCloseEvent(self):
         self.actionDomainMesh.setChecked(False)
         self.meshPatch.setDisplayInfo(False)
-
-    

@@ -111,20 +111,18 @@ class MeshDelaunay(MeshGenerator):
         pts = [Pnt2D(x, y) for (x, y) in ptsRaw]
         newPtIds = list(range(len(pts)))
 
-        # Filtra triângulos usando centróide dentro do polígono ou sobre a borda
+        # Filtra triângulos usando todos os vértices dentro do polígono ou sobre a borda
         tol = maxL * 1e-3
         def onBoundary(pt):
             return MeshDelaunay.pickLoop(polyLoop, pt, tol)
 
+        def triangleInside(tri, loop):
+            return all(pointInPoly(pts[i], loop) or onBoundary(pts[i]) for i in tri)
+
         conn = []
         for tri in connRaw:
-            i0, i1, i2 = tri
-            p0 = pts[i0]; p1 = pts[i1]; p2 = pts[i2]
-            cx = (p0.getX() + p1.getX() + p2.getX()) / 3.0
-            cy = (p0.getY() + p1.getY() + p2.getY()) / 3.0
-            cpt = Pnt2D(cx, cy)
-            if pointInPoly(cpt, closedLoop) or onBoundary(cpt):
-                conn.append([newPtIds[i0], newPtIds[i1], newPtIds[i2]])
+            if triangleInside(tri, closedLoop):
+                conn.append([newPtIds[tri[0]], newPtIds[tri[1]], newPtIds[tri[2]]])
 
         if len(conn) == 0:
             # Fallback: aceita todos (já são internos em maioria dos casos)

@@ -1,5 +1,5 @@
-from compgeom.pnt2d import Pnt2D
 from compgeom.compgeom import CompGeom
+from he_adapter import HetoolAdapter
 
 class AppView:
     def __init__(self, _model=[], _reshape=[]):
@@ -34,25 +34,13 @@ class AppView:
 
     # ---------------------------------------------------------------------
     def getPoints(self):
-        points = []
-        if self.model.isEmpty():
-            return points
-        segments = self.model.getSegments()
-        for seg in segments:
-            pt = seg.getPntInit()
-            points.append(pt)
-            pt = seg.getPntEnd()
-            points.append(pt)
-        return points
-
+        return HetoolAdapter.get_points()
     # ---------------------------------------------------------------------
     def getSegments(self):
-        return self.model.getSegments()
-
+        return HetoolAdapter.get_segments()
     # ---------------------------------------------------------------------
     def getPatches(self):
-        return self.model.getPatches()
-
+        return HetoolAdapter.get_patches()
     # ---------------------------------------------------------------------
     def isPointSelected(self, _pnt):
         return False
@@ -75,8 +63,15 @@ class AppView:
 
     # ---------------------------------------------------------------------
     def getSegmentPts(self, _seg):
-        return _seg.getPolylinePts()
-
+        # Tenta obter pontos de desenho do HETool
+        if hasattr(_seg, "getPointsToDraw"):
+            return _seg.getPointsToDraw()
+        if hasattr(_seg, "getPoints"):
+            return _seg.getPoints()
+        # Fallback legado
+        if hasattr(_seg, "getPolylinePts"):
+            return _seg.getPolylinePts()
+        return []
     # ---------------------------------------------------------------------
     def getPatchPts(self, _ptch):
         return _ptch.getPoints()
@@ -401,36 +396,26 @@ class AppView:
         return xmin, xmax, ymin, ymax
 
     # ---------------------------------------------------------------------
-    def snapToSegment(self, _x, _y, _tol):
-        self.model.setCurrTol(_tol)
-        if self.model.isEmpty():
-            return False, _x, _y
-
-        xClst = _x
-        yClst = _y
-        id_target = -1
-        dmin = _tol
-
-        segments = self.model.getSegments()
-        for i in range(0, len(segments)):
-            status, xC, yC, dist = segments[i].closestPoint(_x, _y)
-            if status:
-                if dist < dmin:
-                    xClst = xC
-                    yClst = yC
-                    dmin = dist
-                    id_target = i
-
-        if id_target < 0:
-            return False, xClst, yClst
-
-        # If found a closest point, return its coordinates
-        return True, xClst, yClst
-
-    # ---------------------------------------------------------------------
     def snapToPoint(self, _x, _y, _tol):
-        self.model.setCurrTol(_tol)
-        return False, _x, _y
+        # Usa HETool para snap
+        found, sx, sy = HetoolAdapter.snap_to_point(_x, _y, _tol)
+        if found:
+            # Retorna o objeto ponto real se possível, ou apenas coordenadas
+            # Precisamos do objeto para o glcanvas saber que é um vértice existente
+            all_points = self.getPoints()
+            for p in all_points:
+                px = p.getX() if hasattr(p, 'getX') else p.x
+                py = p.getY() if hasattr(p, 'getY') else p.y
+                if abs(px - sx) < 1e-6 and abs(py - sy) < 1e-6:
+                    return True, sx, sy, p
+            return True, sx, sy, "UnknownPointObj"
+        return False, 0.0, 0.0, None
+
+    def snapToSegment(self, _x, _y, _tol):
+        found, sx, sy = HetoolAdapter.snap_to_segment(_x, _y, _tol)
+        if found:
+            return True, sx, sy
+        return False, 0.0, 0.0
 
     # ---------------------------------------------------------------------
     def getColorBackground(self):
@@ -479,3 +464,39 @@ class AppView:
     # ---------------------------------------------------------------------
     def getColorMesh(self):
         return self.colorMesh
+    # ---------------------------------------------------------------------
+    def _unpack_closest_point(self, seg, x, y):
+        res = seg.closestPoint(x, y)
+
+        if isinstance(res, (tuple, list)):
+            if len(res) == 4:
+                return res[0], res[1], res[2], res[3]
+
+            if len(res) == 3:
+                a, b, c = res
+                # Case: (x, y, dist) numeric -> treat as hit
+                try:
+                    if not isinstance(a, bool) and not isinstance(b, bool) and not isinstance(c, bool):
+                        return True, float(a), float(b), float(c)
+                except Exception:
+                    pass
+
+                # Case: (status, Point, dist)
+                if isinstance(a, bool):
+                    status = a
+                    pt = b
+                    dist = c
+                    if hasattr(pt, "getX") and hasattr(pt, "getY"):
+                        return status, pt.getX(), pt.getY(), dist
+                    if hasattr(pt, "x") and hasattr(pt, "y"):
+                        try:
+                            xval = pt.x() if callable(getattr(pt, "x", None)) else pt.x
+                            yval = pt.y() if callable(getattr(pt, "y", None)) else pt.y
+                            return status, xval, yval, dist
+                        except Exception:
+                            pass
+                    if isinstance(pt, (tuple, list)) and len(pt) >= 2:
+                        return status, pt[0], pt[1], dist
+
+        raise ValueError(f"closestPoint returned unexpected format: {res!r}")
+
