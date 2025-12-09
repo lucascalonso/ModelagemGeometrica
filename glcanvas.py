@@ -55,17 +55,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         self.width = width
         self.height = height
         glViewport(0, 0, width, height)
-        
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        if width <= height:
-            aspect = float(height) / float(width)
-            glOrtho(self.left, self.right, self.bottom * aspect, self.top * aspect, -1.0, 1.0)
-        else:
-            aspect = float(width) / float(height)
-            glOrtho(self.left * aspect, self.right * aspect, self.bottom, self.top, -1.0, 1.0)
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
+        self.update()
 
     def _get_segments_safe(self):
         if hasattr(self.he_view, 'getSegments'): return self.he_view.getSegments()
@@ -107,6 +97,17 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         return points
 
     def paintGL(self):
+
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        if self.width <= self.height:
+            aspect = float(self.height) / float(self.width) if self.width > 0 else 1.0
+            glOrtho(self.left, self.right, self.bottom * aspect, self.top * aspect, -1.0, 1.0)
+        else:
+            aspect = float(self.width) / float(self.height) if self.height > 0 else 1.0
+            glOrtho(self.left * aspect, self.right * aspect, self.bottom, self.top, -1.0, 1.0)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
         glClear(GL_COLOR_BUFFER_BIT) 
         
         # 1. Grid (Fundo)
@@ -365,7 +366,6 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         if dy < 1.0: dy = 10.0
         self.left = cx - dx/2; self.right = cx + dx/2
         self.bottom = cy - dy/2; self.top = cy + dy/2
-        self.resizeGL(self.width, self.height)
         self.update()
         
     def zoomIn(self):
@@ -374,7 +374,6 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         dy = (self.top - self.bottom) * (1 - self.zoomFac)
         self.left = cx - dx/2; self.right = cx + dx/2
         self.bottom = cy - dy/2; self.top = cy + dy/2
-        self.resizeGL(self.width, self.height)
         self.update()
         
     def zoomOut(self):
@@ -383,31 +382,26 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         dy = (self.top - self.bottom) * (1 + self.zoomFac)
         self.left = cx - dx/2; self.right = cx + dx/2
         self.bottom = cy - dy/2; self.top = cy + dy/2
-        self.resizeGL(self.width, self.height)
         self.update()
         
     def panLeft(self):
         dx = (self.right - self.left) * self.panFac
         self.left -= dx; self.right -= dx
-        self.resizeGL(self.width, self.height)
         self.update()
         
     def panRight(self):
         dx = (self.right - self.left) * self.panFac
         self.left += dx; self.right += dx
-        self.resizeGL(self.width, self.height)
         self.update()
         
     def panUp(self):
         dy = (self.top - self.bottom) * self.panFac
         self.bottom += dy; self.top += dy
-        self.resizeGL(self.width, self.height)
         self.update()
         
     def panDown(self):
         dy = (self.top - self.bottom) * self.panFac
         self.bottom -= dy; self.top -= dy
-        self.resizeGL(self.width, self.height)
         self.update()
     
     def setGrid(self, grid):
