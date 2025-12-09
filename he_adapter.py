@@ -125,5 +125,5 @@ class HetoolAdapter:
         return Hetool.insertSegment([x1, y1, x2, y2], tol)
     
     @staticmethod
-    def tesselate(patch):
-        return Hetool.tesselate(patch)
+    def tessellate(patch):
+        return Hetool.tessellate(patch)

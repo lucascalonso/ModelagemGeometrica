@@ -9,7 +9,8 @@ import os
 hetool_path = os.path.join(os.path.dirname(__file__), 'HETool', 'src')
 if hetool_path not in sys.path:
     sys.path.append(hetool_path)
-from hetool.include.hetool import Hetool 
+from hetool.include.hetool import Hetool
+from he_adapter import HetoolAdapter 
 
 class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     def __init__(self, _controller):
@@ -41,10 +42,15 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         self.curveType = 'LINE'
         self.polyAnchor = None
 
+        self.panActive = False
+        self.lastPanPos = QtCore.QPoint(0, 0)
+        self.mousePos = QtCore.QPoint(0, 0)
+
+        self.isSelecting = False
+        self.mouseMoveTol = 5
+
     def initializeGL(self):
         glClearColor(1.0, 1.0, 1.0, 1.0)
-        # CORREÇÃO: Desativamos o teste de profundidade para desenho 2D.
-        # Isso garante que a ordem de desenho (Faces -> Linhas -> Pontos) seja respeitada.
         glDisable(GL_DEPTH_TEST) 
         glEnable(GL_POINT_SMOOTH)
         glEnable(GL_LINE_SMOOTH)
@@ -116,26 +122,16 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
 
         # 2. Patches (Camada do meio - Preenchimento)
         patches = self._get_patches_safe()
-
-        # --- DEBUG DIAGNÓSTICO BURACOS---
-        if patches:
-            print(f"\n--- DEBUG PAINT (Total: {len(patches)}) ---")
-            for i, p in enumerate(patches):
-                # Tenta pegar ID se existir
-                pid = p.ID if hasattr(p, 'ID') else i
-                status = "BURACO (isDeleted)" if p.isDeleted else "REGIÃO VÁLIDA"
-                pts = self._get_patch_points(p)
-                print(f"  Patch[{i}] ID={pid}: {status} | Pontos: {len(pts)}")
-        # -------------------------
         
         if patches:
-            # Separa patches em duas listas
             valid_patches = [p for p in patches if not p.isDeleted]
             deleted_patches = [p for p in patches if p.isDeleted]
 
-            # PASSO A: Desenha Regiões Válidas (Verde/Vermelho)
+            # PASSO A: Desenha Regiões Válidas
             glEnable(GL_BLEND)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            
+            # NOTA: Removemos glBegin(GL_TRIANGLES) daqui pois o drawPatchWithTess gerencia isso internamente
             
             for patch in valid_patches:
                 if patch.isSelected():
@@ -143,29 +139,15 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                 else:
                     glColor4f(0.0, 0.8, 0.0, 0.3) # Verde
 
-                pts = self._get_patch_points(patch)
-                if pts and len(pts) >= 3:
-                    glBegin(GL_POLYGON)
-                    for p in pts:
-                        px = p.getX() if hasattr(p, 'getX') else p.x
-                        py = p.getY() if hasattr(p, 'getY') else p.y
-                        glVertex2f(px, py)
-                    glEnd()
+                # Usa o GLU Tessellator que é robusto para polígonos côncavos
+                self.drawPatchWithTess(self._get_patch_points(patch))
             
-            # PASSO B: Desenha Buracos (Branco Opaco) POR CIMA
-            # Isso "apaga" visualmente a área do buraco
+            # PASSO B: Desenha Buracos (Branco Opaco)
             glDisable(GL_BLEND)
-            glColor3f(1.0, 1.0, 1.0) # Branco (Cor do Fundo)
+            glColor3f(1.0, 1.0, 1.0)
             
             for patch in deleted_patches:
-                pts = self._get_patch_points(patch)
-                if pts and len(pts) >= 3:
-                    glBegin(GL_POLYGON)
-                    for p in pts:
-                        px = p.getX() if hasattr(p, 'getX') else p.x
-                        py = p.getY() if hasattr(p, 'getY') else p.y
-                        glVertex2f(px, py)
-                    glEnd()
+                self.drawPatchWithTess(self._get_patch_points(patch))
 
         # 3. Segmentos (Camada superior - Linhas)
         segments = self._get_segments_safe()
@@ -207,25 +189,72 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             glLineWidth(1.0)
             glBegin(GL_LINES)
             glVertex2f(self.polyAnchor[0], self.polyAnchor[1])
-            curr = self.mapFromGlobal(QtGui.QCursor.pos())
+            
+            curr = self.mousePos
             currW = self.convertRasterPtToWorldCoords(curr)
-            glVertex2f(currW.x(), currW.y())
+            cx, cy = currW.x(), currW.y()
+            
+            cx, cy = self.snapToGridOrPoint(cx, cy)
+            
+            glVertex2f(cx, cy)
+            glEnd()
+        
+        # 6. Retângulo de Seleção
+        if self.isSelecting and self.curMouseAction == 'SELECTION':
+            glEnable(GL_BLEND)
+            pt0W = self.convertRasterPtToWorldCoords(self.pt0)
+            currW = self.convertRasterPtToWorldCoords(self.mousePos)
+            
+            xmin = min(pt0W.x(), currW.x())
+            xmax = max(pt0W.x(), currW.x())
+            ymin = min(pt0W.y(), currW.y())
+            ymax = max(pt0W.y(), currW.y())
+
+            # Desenha preenchimento transparente
+            glColor4f(0.0, 0.0, 1.0, 0.1) # Azul bem claro
+            glBegin(GL_QUADS)
+            glVertex2f(xmin, ymin)
+            glVertex2f(xmax, ymin)
+            glVertex2f(xmax, ymax)
+            glVertex2f(xmin, ymax)
+            glEnd()
+
+            # Desenha borda
+            glColor3f(0.0, 0.0, 1.0) # Azul
+            glLineWidth(1.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(xmin, ymin)
+            glVertex2f(xmax, ymin)
+            glVertex2f(xmax, ymax)
+            glVertex2f(xmin, ymax)
             glEnd()
 
     def drawGrid(self):
         gridX, gridY = self.grid.getGridSpace()
         if gridX <= 0 or gridY <= 0: return
-        if (self.right - self.left) / gridX > 200 or (self.top - self.bottom) / gridY > 200: return
+
+        if self.width <= self.height:
+            aspect = float(self.height) / float(self.width) if self.width > 0 else 1.0
+            vis_left, vis_right = self.left, self.right
+            vis_bottom, vis_top = self.bottom * aspect, self.top * aspect
+        else:
+            aspect = float(self.width) / float(self.height) if self.height > 0 else 1.0
+            vis_left, vis_right = self.left * aspect, self.right * aspect
+            vis_bottom, vis_top = self.bottom, self.top
+
+        if (vis_right - vis_left) / gridX > 200 or (vis_top - vis_bottom) / gridY > 200: return
 
         glColor3f(0.8, 0.8, 0.8)
-        glPointSize(3.0)
+        glPointSize(5.0)
         glBegin(GL_POINTS)
-        start_x = math.floor(self.left / gridX) * gridX
-        start_y = math.floor(self.bottom / gridY) * gridY
+        
+        start_x = math.floor(vis_left / gridX) * gridX
+        start_y = math.floor(vis_bottom / gridY) * gridY
+        
         x = start_x
-        while x < self.right + gridX:
+        while x < vis_right + gridX:
             y = start_y
-            while y < self.top + gridY:
+            while y < vis_top + gridY:
                 glVertex2f(x, y)
                 y += gridY
             x += gridX
@@ -234,8 +263,8 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         glColor3f(0.0, 0.0, 0.0)
         glLineWidth(1.0)
         glBegin(GL_LINES)
-        glVertex2f(-gridX, 0); glVertex2f(gridX, 0)
-        glVertex2f(0, -gridY); glVertex2f(0, gridY)
+        glVertex2f(vis_left, 0); glVertex2f(vis_right, 0)
+        glVertex2f(0, vis_bottom); glVertex2f(0, vis_top)
         glEnd()
 
     def snapToPoint(self, x, y, tol):
@@ -253,8 +282,23 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                 sx, sy = px, py
                 snapped = True
         return snapped, sx, sy
+    
+    def snapToGridOrPoint(self, x, y):
+        # Atualiza tolerância baseada no zoom atual
+        maxSize = max(abs(self.right - self.left), abs(self.top - self.bottom))
+        tol = maxSize * self.pickTolFac
+        
+        # 1. Snap aos pontos existentes (prioridade)
+        snapped, sx, sy = self.snapToPoint(x, y, tol)
+        if snapped: return sx, sy
+        
+        # 2. Snap ao Grid (se habilitado)
+        if self.grid and self.grid.getSnapInfo():
+            sx, sy = self.grid.snapTo(x, y)
+            return sx, sy
+            
+        return x, y
 
-    # --- IMPLEMENTAÇÃO DE UNDO / REDO ---
     def keyPressEvent(self, event):
         # Ctrl + Z = Undo
         if event.key() == QtCore.Qt.Key_Z and (event.modifiers() & QtCore.Qt.ControlModifier):
@@ -285,16 +329,25 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     def mousePressEvent(self, event):
         self.mouseButton = event.button()
         self.pt0 = event.pos()
+        self.mousePos = event.pos()
+
+        if self.mouseButton == QtCore.Qt.MiddleButton:
+            self.panActive = True
+            self.lastPanPos = event.pos()
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
+            return
+            
         maxSize = max(abs(self.right - self.left), abs(self.top - self.bottom))
         self.pickTol = maxSize * self.pickTolFac
         ptW = self.convertRasterPtToWorldCoords(self.pt0)
         xw, yw = ptW.x(), ptW.y()
 
+        if self.curMouseAction == 'COLLECTION':
+            xw, yw = self.snapToGridOrPoint(xw, yw)
+
         if self.curMouseAction == 'SELECTION':
             if self.mouseButton == QtCore.Qt.LeftButton:
-                shift = (event.modifiers() & QtCore.Qt.ShiftModifier) == QtCore.Qt.ShiftModifier
-                self.he_ctrl.selectPick(xw, yw, self.pickTol, shift)
-                self.update()
+                self.isSelecting = True
             return
 
         if self.curMouseAction == 'COLLECTION':
@@ -308,22 +361,87 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
 
             elif self.curveType == 'POLYLINE':
                 if self.mouseButton == QtCore.Qt.LeftButton:
-                    snapped, sx, sy = self.snapToPoint(xw, yw, self.pickTol)
-                    if snapped: xw, yw = sx, sy
-
                     if self.polyAnchor is None:
                         self.polyAnchor = (xw, yw)
                     else:
                         self.he_ctrl.insertSegment([self.polyAnchor[0], self.polyAnchor[1], xw, yw], self.pickTol)
-                        if snapped: self.polyAnchor = None
-                        else: self.polyAnchor = (xw, yw)
+                        self.polyAnchor = (xw, yw)
                     self.update()
                 elif self.mouseButton == QtCore.Qt.RightButton:
                     self.polyAnchor = None
                     self.update()
 
     def mouseMoveEvent(self, event):
+        self.mousePos = event.pos()
+        
+        if self.isSelecting:
+            self.update()
+            return
+
+        if self.panActive:
+            dx = event.x() - self.lastPanPos.x()
+            dy = event.y() - self.lastPanPos.y()
+            
+            worldWidth = self.right - self.left
+            worldHeight = self.top - self.bottom
+            
+            scaleX = worldWidth / self.width if self.width > 0 else 1.0
+            scaleY = worldHeight / self.height if self.height > 0 else 1.0
+            
+            if self.width <= self.height:
+                aspect = float(self.height) / float(self.width) if self.width > 0 else 1.0
+                scaleY = (self.top - self.bottom) * aspect / self.height
+            else:
+                aspect = float(self.width) / float(self.height) if self.height > 0 else 1.0
+                scaleX = (self.right - self.left) * aspect / self.width
+
+            self.left -= dx * scaleX
+            self.right -= dx * scaleX
+            self.bottom += dy * scaleY
+            self.top += dy * scaleY
+
+            self.lastPanPos = event.pos()
+            self.update()
+            return
+        
         if self.polyAnchor: self.update()
+    
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.MiddleButton:
+            self.panActive = False
+            self.setCursor(QtCore.Qt.ArrowCursor)
+            
+        if self.isSelecting and event.button() == QtCore.Qt.LeftButton:
+            self.isSelecting = False
+            
+            diff = event.pos() - self.pt0
+            dist = diff.manhattanLength()
+            
+            shift = (event.modifiers() & QtCore.Qt.ShiftModifier) == QtCore.Qt.ShiftModifier
+            
+            if dist <= self.mouseMoveTol:
+                
+                ptW = self.convertRasterPtToWorldCoords(event.pos())
+                self.he_ctrl.selectPick(ptW.x(), ptW.y(), self.pickTol, shift)
+            else:
+                
+                pt0W = self.convertRasterPtToWorldCoords(self.pt0)
+                pt1W = self.convertRasterPtToWorldCoords(event.pos())
+                
+                xmin = min(pt0W.x(), pt1W.x())
+                xmax = max(pt0W.x(), pt1W.x())
+                ymin = min(pt0W.y(), pt1W.y())
+                ymax = max(pt0W.y(), pt1W.y())
+                
+                self.he_ctrl.selectFence(xmin, xmax, ymin, ymax, shift)
+            
+            self.update()
+
+    def wheelEvent(self, event):
+        if event.angleDelta().y() > 0:
+            self.zoomIn()
+        else:
+            self.zoomOut()
 
     def convertRasterPtToWorldCoords(self, _pt):
         w = self.width
@@ -341,7 +459,11 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             wy = self.bottom + y_ratio * (self.top - self.bottom)
         return QtCore.QPointF(wx, wy)
 
-    def setMouseAction(self, action): self.curMouseAction = action
+    def setMouseAction(self, action): 
+        self.curMouseAction = action
+        self.polyAnchor = None
+        self.update()
+
     def setCurveType(self, curveType):
         self.curveType = curveType
         self.polyAnchor = None
@@ -409,3 +531,33 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     
     def resetGridDisplay(self):
         self.update()
+    
+    def drawPatchWithTess(self, points):
+        if not points or len(points) < 3: return
+
+        try:
+            # Cria objeto tessellator
+            tess = gluNewTess()
+            
+            # Define callbacks para o OpenGL desenhar os triângulos gerados
+            gluTessCallback(tess, GLU_TESS_BEGIN, glBegin)
+            gluTessCallback(tess, GLU_TESS_VERTEX, glVertex3dv)
+            gluTessCallback(tess, GLU_TESS_END, glEnd)
+            
+            # Inicia definição do polígono
+            gluTessBeginPolygon(tess, None)
+            gluTessBeginContour(tess)
+            
+            for p in points:
+                # Garante coordenadas numéricas
+                x = p.getX() if hasattr(p, 'getX') else p.x
+                y = p.getY() if hasattr(p, 'getY') else p.y
+                # Z=0 para 2D. O tessellator precisa de 3 coordenadas.
+                v = [float(x), float(y), 0.0]
+                gluTessVertex(tess, v, v)
+                
+            gluTessEndContour(tess)
+            gluTessEndPolygon(tess)
+            gluDeleteTess(tess)
+        except Exception as e:
+            print(f"Erro no Tessellator: {e}")
