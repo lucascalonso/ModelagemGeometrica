@@ -88,12 +88,16 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionCircle.triggered.connect(self.on_actionCircle)
         self.actionCircleArc.triggered.connect(self.on_actionCircleArc)
         self.actionGrid.triggered.connect(self.on_actionGrid)
-        self.actionIntersect.triggered.connect(self.intersectSegments)
-        self.actionJoin.triggered.connect(self.joinSegments)
+        #self.actionIntersect.triggered.connect(self.intersectSegments)
+        #self.actionJoin.triggered.connect(self.joinSegments)
         self.actionSplit.triggered.connect(self.on_actionSplit)
-        self.actionCreateRegion.triggered.connect(self.createRegion)
+        #self.actionCreateRegion.triggered.connect(self.createRegion)
         self.actionMeshSegment.triggered.connect(self.on_actionMeshSegment)
         self.actionDomainMesh.triggered.connect(self.on_actionDomainMesh)
+
+        self.actionIntersect.setVisible(False)
+        self.actionJoin.setVisible(False)
+        self.actionCreateRegion.setVisible(False)
 
         
     ###########################################################
@@ -253,19 +257,22 @@ class AppController(QMainWindow, Ui_MyApp):
         self.glcanvas.update()
 
     def on_actionSplit(self):
-        # Verifica seleção via HeController
-        if self.model.getHeController().getNumSelectedSegments() == 0:
+        # Obtém o controlador
+        he_ctrl = self.model.getHeController()
+        
+        # Verifica se há segmentos selecionados
+        if he_ctrl.getNumSelectedSegments() == 0:
             self.popupMessage("No segments selected.")
             return
 
-        # Import the dialog here to avoid circular dependencies if any
-        from splitdialog import SplitDialog
-        
-        dialog = SplitDialog(self)
-        if dialog.exec():
-            num_pieces = dialog.get_num_pieces()
-            # Delega split para HeController
-            self.model.getHeController().splitSelectedSegments(num_pieces)
+        # Usa QInputDialog nativo do Qt para pedir o número de pedaços
+        from PySide6.QtWidgets import QInputDialog
+        num_pieces, ok = QInputDialog.getInt(
+            self, "Split Segment", "Number of pieces:", 2, 2, 100, 1
+        )
+
+        if ok:
+            he_ctrl.splitSelectedSegments(num_pieces)
             self.glcanvas.update()
 
     ###########################################################

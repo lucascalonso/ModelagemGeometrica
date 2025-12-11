@@ -59,7 +59,7 @@ class Patch:
     def getBoundBox(self):
 
         if len(self.pts) == 0:
-            return
+            return 0.0, 0.0, 0.0, 0.0
 
         xmin = self.pts[0].getX()
         ymin = self.pts[0].getY()
@@ -67,7 +67,8 @@ class Patch:
         ymax = self.pts[0].getY()
 
         if len(self.pts) == 1:
-            return
+            return xmin, xmax, ymin, ymax
+
 
         for j in range(1, len(self.pts)):
             xmin = min(xmin, self.pts[j].getX())

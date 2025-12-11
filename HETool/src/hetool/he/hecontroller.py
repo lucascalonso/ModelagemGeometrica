@@ -1645,3 +1645,47 @@ class HeController:
         self.undoredo.insertOperation(set_mesh_op)
         self.undoredo.end()
         self.isChanged = True
+
+    def getNumSelectedSegments(self):
+        """Retorna o número de segmentos selecionados no modelo."""
+        return len(self.hemodel.selectedEdges())
+
+    def splitSelectedSegments(self, num_pieces):
+        """
+        Divide todos os segmentos selecionados em 'num_pieces' partes iguais.
+        Usa addPoint para garantir a integridade topológica.
+        """
+        if num_pieces < 2:
+            return
+
+        selected_edges = self.hemodel.selectedEdges()
+        if not selected_edges:
+            return
+
+        self.undoredo.begin()
+
+        # 1. Calcula todos os pontos de corte necessários
+        points_to_add = []
+        
+        # Coletamos os pontos primeiro para evitar problemas ao modificar a lista de arestas durante a iteração
+        for edge in selected_edges:
+            segment = edge.segment
+            
+            # Gera N-1 pontos internos ao longo do segmento
+            for i in range(1, num_pieces):
+                t = i / float(num_pieces)
+                pt = segment.getPoint(t)
+                points_to_add.append(pt)
+            
+            if hasattr(edge, 'segment'):
+                edge.segment.setSelected(False)
+
+        # 2. Adiciona os pontos. 
+        # O método addPoint detecta automaticamente que o ponto cai sobre uma aresta
+        # e realiza o split topológico (MVSE) necessário.
+        tol = 1e-3 
+        for pt in points_to_add:
+            self.addPoint(pt, tol)
+
+        self.undoredo.end()
+        self.update()
