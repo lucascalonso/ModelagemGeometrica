@@ -14,6 +14,16 @@ from hetool.geometry.attributes.attribmanager import AttribManager
 from hetool.geometry.attributes.attribsymbols import AttribSymbols
 import math
 
+from hetool.he.auxoperations import (
+    Flip,
+    DelPatch,
+    CreatePatch,
+    SetAttribute,
+    UnSetAttribute,
+    SetNumberOfSubdivisions,
+    SetMesh
+)
+
 
 class HeController:
     def __init__(self, _hemodel):
@@ -1625,3 +1635,13 @@ class HeController:
 
     def getAttributeSymbol(self, _attribute, _scale, _pt=None, _seg=None, _patch=None):
         return AttribSymbols.getSymbol(_attribute, _scale, _pt, _seg, _patch)
+
+    # ---------- MUDANÇAS LUCAS -------------------------------------
+
+    def setMesh(self, _patch, _mesh):
+        self.undoredo.begin()
+        set_mesh_op = SetMesh(_patch, _mesh)
+        set_mesh_op.execute()
+        self.undoredo.insertOperation(set_mesh_op)
+        self.undoredo.end()
+        self.isChanged = True

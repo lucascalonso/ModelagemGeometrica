@@ -12,6 +12,8 @@ from mesh.meshgenerator import MeshGenerator
 from mesh.meshpatch import MeshPatch
 from mesh.meshsegmentdialog import MeshSegmentDialog
 from mesh.meshpatchdialog import MeshPatchDialog
+from hetool.compgeom.compgeom import CompGeom
+from hetool.geometry.point import Point
 
 
 class AppController(QMainWindow, Ui_MyApp):
@@ -122,7 +124,8 @@ class AppController(QMainWindow, Ui_MyApp):
 
     def on_actionDelete(self):
         # Delega para o HeController
-        self.model.getHeController().deleteSelectedEntities()
+        self.model.getHeController().delSelectedEntities()
+        print("Delete executed")
         self.glcanvas.update()
 
     def on_actionLine(self):
@@ -337,14 +340,93 @@ class AppController(QMainWindow, Ui_MyApp):
         elif self.meshPatchDialog.radioButtonDelaunay.isChecked():
             type = MeshGenerator.DELAUNAY_TRIANGULATION
         
-        # Configura o gerador no modelo
         self.meshPatch.setMeshGenerator(type)
         
-        # Aplica a geração da malha aos patches selecionados via HeController
-        self.model.getHeController().applyMeshToSelectedPatches()
+        # Obtém patches selecionados
+        # Importante: Copiamos a lista porque a inserção de segmentos vai modificar 
+        # a lista de patches do modelo (dividindo-os)
+        selected_patches = list(self.model.getHeView().getSelectedPatches())
         
-        # Atualiza a visualização
-        self.glcanvas.update()
+        he_controller = self.model.getHeController()
+
+        # Lista para armazenar todas as arestas internas a serem criadas
+        # Formato: [(x1, y1, x2, y2), ...]
+        segments_to_insert = []
+
+        for patch in selected_patches:
+            patch.setSelected(False)
+            
+            # 1. Configura Loops
+            loops = patch.getMeshLoops()
+            if not self.meshPatch.setLoops(loops):
+                self.popupMessage("Invalid patch configuration.")
+                continue
+            
+            # 2. Obtém Pontos da Fronteira
+            bdryPts = patch.getMeshBdryPoints()
+            
+            # 3. Gera Malha (Pontos e Conectividade)
+            status, pts, conn = self.meshPatch.generateMesh(bdryPts)
+            
+            if status:
+                # 4. Extrai arestas únicas da malha
+                unique_edges = set()
+                for tri in conn:
+                    # tri = [id0, id1, id2]
+                    for i in range(3):
+                        u = tri[i]
+                        v = tri[(i+1)%3]
+                        # Ordena índices para garantir unicidade (u,v) == (v,u)
+                        if u > v: u, v = v, u
+                        unique_edges.add((u, v))
+                
+                # 5. Filtra arestas: Queremos apenas as INTERNAS
+                # As arestas de contorno já existem no modelo.
+                patch_segments = patch.getSegments()
+                
+                for u, v in unique_edges:
+                    p1 = pts[u]
+                    p2 = pts[v]
+                    
+                    # Calcula ponto médio da aresta candidata
+                    mid_x = (p1.getX() + p2.getX()) / 2.0
+                    mid_y = (p1.getY() + p2.getY()) / 2.0
+                    mid_pt = Point(mid_x, mid_y)
+                    
+                    # Verifica se o ponto médio está muito próximo de algum segmento da borda original
+                    is_boundary = False
+                    for seg in patch_segments:
+                        # Pega pontos do segmento existente
+                        # Assumindo que seg tem getPoint(0) e getPoint(1) ou similar
+                        # O HETool Segment geralmente tem getPoint(t)
+                        s1 = seg.getPoint(0.0)
+                        s2 = seg.getPoint(1.0)
+                        
+                        dist, _, _ = CompGeom.getClosestPointSegment(s1, s2, mid_pt)
+                        if dist < 1e-3: # Tolerância pequena
+                            is_boundary = True
+                            break
+                    
+                    if not is_boundary:
+                        segments_to_insert.append([p1.getX(), p1.getY(), p2.getX(), p2.getY()])
+            else:
+                self.popupMessage("Error generating mesh.")
+
+        # 6. Insere os segmentos no modelo
+        # Isso efetivamente "corta" as regiões, criando novas faces (patches)
+        if segments_to_insert:
+            # Desabilita atualizações visuais parciais para performance
+            # (Se o HETool tiver suporte a batch, seria ideal, mas faremos um loop)
+            count = 0
+            total = len(segments_to_insert)
+            print(f"Inserindo {total} arestas na malha...")
+            
+            for coords in segments_to_insert:
+                he_controller.insertSegment(coords, self.glcanvas.pickTol)
+                count += 1
+                if count%10 == 0:
+                    print(f"Processando...{count}/{total}")
+            self.glcanvas.update()
 
     def meshPatchClose(self):
         self.actionDomainMesh.setChecked(False)

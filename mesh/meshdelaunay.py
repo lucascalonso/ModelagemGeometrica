@@ -1,6 +1,6 @@
 from mesh.meshgenerator import MeshGenerator
-from compgeom.pnt2d import Pnt2D
-from compgeom.compgeom import CompGeom
+from hetool.geometry.point import Point
+from hetool.compgeom.compgeom import CompGeom
 import triangle as tr
 import math
 
@@ -42,26 +42,28 @@ class MeshDelaunay(MeshGenerator):
     def pickLoop(loopPts, _pt, _tol):
         nLoopPts = len(loopPts)
         for i in range(0, nLoopPts):
-            if CompGeom.pickLine(loopPts[i], loopPts[(i + 1)%nLoopPts], _pt, _tol):
+            p1 = loopPts[i]
+            p2 = loopPts[(i + 1) % nLoopPts]
+            dist, _, _ = CompGeom.getClosestPointSegment(p1, p2, _pt)
+            
+            if dist < _tol:
                 return True
         return False
 
     # ---------------------------------------------------------------------
     def setLoops(self, _loops):
-
-        # Check for just one loop
-        if len(_loops) != 1:
+        if len(_loops) == 0:
             return False
-
         return True
 
     # ---------------------------------------------------------------------
     def generateMesh(self, _bdryPnts):
 
-        # Fecha loop para testes ponto‑no‑polígono (sem repetir para Triangle)
+        # Fecha loop para testes ponto‑no‑polígono
         polyLoop = _bdryPnts
         if polyLoop[0].getX() != polyLoop[-1].getX() or polyLoop[0].getY() != polyLoop[-1].getY():
-            closedLoop = polyLoop + [Pnt2D(polyLoop[0].getX(), polyLoop[0].getY())]
+            # Cria Point do HETool
+            closedLoop = polyLoop + [Point(polyLoop[0].getX(), polyLoop[0].getY())]
         else:
             closedLoop = polyLoop
 
@@ -76,7 +78,12 @@ class MeshDelaunay(MeshGenerator):
         for i in range(nBdryPts):
             a = polyLoop[i]
             b = polyLoop[(i + 1) % nBdryPts]
-            sizeL = Pnt2D.euclidiandistance(a, b)
+            
+            # SUBSTITUIÇÃO: Cálculo manual da distância euclidiana
+            dx = a.getX() - b.getX()
+            dy = a.getY() - b.getY()
+            sizeL = math.sqrt(dx*dx + dy*dy)
+            
             if sizeL > maxL:
                 maxL = sizeL
         maxArea = maxL * maxL * math.sqrt(3.0) / 4.0
@@ -92,7 +99,8 @@ class MeshDelaunay(MeshGenerator):
         connRaw = t['triangles'].tolist()
 
         # Função robusta ponto-no-polígono (ray casting)
-        def pointInPoly(pt: Pnt2D, loop):
+        # Type hint atualizado para Point
+        def pointInPoly(pt: Point, loop):
             x = pt.getX()
             y = pt.getY()
             inside = False
@@ -107,12 +115,13 @@ class MeshDelaunay(MeshGenerator):
                         inside = not inside
             return inside
 
-        # Mantém todos os pontos (Triangle já respeitou segmentos); não filtra agora
-        pts = [Pnt2D(x, y) for (x, y) in ptsRaw]
+        # Mantém todos os pontos convertendo para Point do HETool
+        pts = [Point(x, y) for (x, y) in ptsRaw]
         newPtIds = list(range(len(pts)))
 
-        # Filtra triângulos usando todos os vértices dentro do polígono ou sobre a borda
+        # Filtra triângulos
         tol = maxL * 1e-3
+
         def onBoundary(pt):
             return MeshDelaunay.pickLoop(polyLoop, pt, tol)
 
@@ -125,15 +134,13 @@ class MeshDelaunay(MeshGenerator):
                 conn.append([newPtIds[tri[0]], newPtIds[tri[1]], newPtIds[tri[2]]])
 
         if len(conn) == 0:
-            # Fallback: aceita todos (já são internos em maioria dos casos)
             conn = [[newPtIds[i0], newPtIds[i1], newPtIds[i2]] for (i0, i1, i2) in connRaw]
 
-        # Força orientação consistente com primeiro triângulo do loop
+        # Força orientação consistente
         def area2(a, b, c):
             return (b.getX() - a.getX()) * (c.getY() - a.getY()) - \
                    (b.getY() - a.getY()) * (c.getX() - a.getX())
 
-        # domínio: usa três pontos do contorno (não colineares)
         domA = polyLoop[0]; domB = polyLoop[1]; domC = polyLoop[2]
         dom_sign = 1 if area2(domA, domB, domC) >= 0 else -1
 
@@ -152,5 +159,4 @@ class MeshDelaunay(MeshGenerator):
                 seen.add(key)
                 fixed.append(tri)
         conn = fixed
-
         return True, pts, conn

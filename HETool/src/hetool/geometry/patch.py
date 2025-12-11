@@ -182,3 +182,48 @@ class Patch:
                             Area -= adjface.patch.Area()
 
         return Area
+
+# ---------------------- MUDANÇAS LUCAS ------------------------------------
+
+    # Retorna a estrutura de loops (número de subdivisões por segmento)
+    def getMeshLoops(self):
+        loops = []
+        for seg in self.segments:
+            n = 1
+            # Procura atributo de subdivisão
+            if hasattr(seg, 'attributes'):
+                for att in seg.attributes:
+                    if att['name'] == "Nsbdvs":
+                        n = att['properties']['Value']
+                        break
+            loops.append(n)
+        return loops
+
+    # Retorna todos os pontos da fronteira discretizados para a geração da malha
+    def getMeshBdryPoints(self):
+        points = []
+        for i in range(len(self.segments)):
+            seg = self.segments[i]
+            orient = self.segmentOrients[i]
+            
+            n = 1
+            if hasattr(seg, 'attributes'):
+                for att in seg.attributes:
+                    if att['name'] == "Nsbdvs":
+                        n = att['properties']['Value']
+                        break
+            
+            # Define direção baseada na orientação do segmento no patch
+            if orient: # True = Sentido original
+                start_t, end_t = 0.0, 1.0
+            else:      # False = Sentido invertido
+                start_t, end_t = 1.0, 0.0
+            
+            # Gera n pontos (o último ponto do segmento é o primeiro do próximo)
+            for k in range(n):
+                t = start_t + (end_t - start_t) * (k / float(n))
+                # Assume que o segmento tem método getPoint (Polyline/Line)
+                pt = seg.getPoint(t) 
+                points.append(pt)
+                
+        return points

@@ -156,8 +156,12 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                 else:
                     glColor4f(0.0, 0.8, 0.0, 0.3) # Verde
 
-                # Usa o GLU Tessellator que é robusto para polígonos côncavos
+                # Desenha o fundo colorido do patch
                 self.drawPatchWithTess(self._get_patch_points(patch))
+
+                # Se o patch tiver uma malha gerada, desenha ela por cima
+                if hasattr(patch, 'mesh') and patch.mesh:
+                    self.drawMesh(patch.mesh)
             
             # PASSO B: Desenha Buracos (Branco Opaco)
             glDisable(GL_BLEND)
@@ -199,10 +203,19 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         # 4. Vértices (Topo - Pontos)
         points = self._get_points_safe()
         if points:
-            glColor3f(0.0, 0.0, 1.0)
             glPointSize(8.0)
             glBegin(GL_POINTS)
             for p in points:
+                # Lógica de visualização de seleção para vértices
+                is_selected = False
+                if hasattr(p, 'isSelected'):
+                    is_selected = p.isSelected()
+                
+                if is_selected:
+                    glColor3f(1.0, 0.0, 0.0) # Vermelho se selecionado
+                else:
+                    glColor3f(0.0, 0.0, 1.0) # Azul padrão
+
                 px = p.getX() if hasattr(p, 'getX') else p.x
                 py = p.getY() if hasattr(p, 'getY') else p.y
                 glVertex2f(px, py)
@@ -362,6 +375,15 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
 
         # Delete ou Backspace = Deletar Seleção
         elif event.key() == QtCore.Qt.Key_Delete or event.key() == QtCore.Qt.Key_Backspace:
+            
+            if self.he_view:
+                selected_points = self.he_view.getSelectedPoints()
+                for pt in selected_points:
+                    incident_segments = self.he_view.getIncidentSegmentsFromPoint(pt)
+                    if incident_segments:
+                        for seg in incident_segments:
+                            seg.setSelected(True)
+
             self.he_ctrl.delSelectedEntities()
             print("Delete executed")
             self.update()
@@ -647,3 +669,24 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             gluDeleteTess(tess)
         except Exception as e:
             print(f"Erro no Tessellator: {e}")
+
+    def drawMesh(self, mesh):
+        if not mesh: return
+        pts, conn = mesh
+        
+        # Configura cor para as linhas da malha (Cinza Escuro/Preto)
+        glColor3f(0.2, 0.2, 0.2) 
+        glLineWidth(1.0)
+        
+        # Desenha cada triângulo da malha como um loop de linhas (Wireframe)
+        for tri in conn:
+            # tri é uma lista de índices [i, j, k]
+            p0 = pts[tri[0]]
+            p1 = pts[tri[1]]
+            p2 = pts[tri[2]]
+            
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(p0.getX(), p0.getY())
+            glVertex2f(p1.getX(), p1.getY())
+            glVertex2f(p2.getX(), p2.getY())
+            glEnd()
