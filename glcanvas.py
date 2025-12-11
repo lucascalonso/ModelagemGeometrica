@@ -89,25 +89,32 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         return []
     
     def _get_patch_points(self, patch):
-        points = []
+        # 1. Tenta extrair da topologia (Face -> Loop -> HalfEdge)
+        # Isso garante que desenhamos a geometria atualizada após cortes/splits
+        try:
+            if hasattr(patch, 'face') and patch.face is not None:
+                points = []
+                # Assume que patch.face.loop é o loop externo
+                start_he = patch.face.loop.he
+                if start_he is not None:
+                    curr_he = start_he
+                    while True:
+                        if curr_he.vertex and curr_he.vertex.point:
+                            points.append(curr_he.vertex.point)
+                        curr_he = curr_he.next
+                        if curr_he == start_he or curr_he is None: break
+                
+                if len(points) >= 3:
+                    return points
+        except Exception:
+            pass
+
+        # 2. Fallback: Se não tiver topologia (ex: patch isolado ou em construção), usa getPoints armazenado
         if hasattr(patch, 'getPoints'):
             points = patch.getPoints()
             if points and len(points) > 0:
                 return points
-
-        try:
-            if not hasattr(patch, 'face') or patch.face is None: return []
-            start_he = patch.face.loop.he
-            if start_he is None: return []
-            curr_he = start_he
-            while True:
-                if curr_he.vertex and curr_he.vertex.point:
-                    points.append(curr_he.vertex.point)
-                curr_he = curr_he.next
-                if curr_he == start_he or curr_he is None: break
-        except Exception:
-            return []
-        return points
+        return []
 
     def paintGL(self):
 
