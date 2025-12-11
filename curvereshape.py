@@ -35,7 +35,6 @@ class CurveReshape:
             return False
         self.ctrlPtId = _id
         return True
-
     # ---------------------------------------------------------------------
     def changeCtrlPoint(self, _x, _y, _tol):
         if self.ctrlPtId == -1:

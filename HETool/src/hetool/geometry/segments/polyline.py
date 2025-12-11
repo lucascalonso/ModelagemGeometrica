@@ -43,6 +43,10 @@ class Polyline(Segment):
                              (self.pts[i].getX() - self.pts[i - 1].getX()) +
                              (self.pts[i].getY() - self.pts[i - 1].getY()) *
                              (self.pts[i].getY() - self.pts[i - 1].getY()))
+            
+            #ALTERAÇÃO LUCAS
+            if dist < 1e-12:
+                continue
 
             if (length + dist) >= s:
                 loc_t = (s - length) / dist

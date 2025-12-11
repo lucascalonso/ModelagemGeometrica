@@ -10,7 +10,13 @@ hetool_path = os.path.join(os.path.dirname(__file__), 'HETool', 'src')
 if hetool_path not in sys.path:
     sys.path.append(hetool_path)
 from hetool.include.hetool import Hetool
-from he_adapter import HetoolAdapter 
+from he_adapter import HetoolAdapter
+
+from geometry.curves.quadbezier import QuadBezier
+from geometry.curves.cubicbezier import CubicBezier
+from geometry.curves.circle import Circle
+from geometry.curves.circlearc import CircleArc
+from hetool.geometry.point import Point
 
 class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     def __init__(self, _controller):
@@ -41,6 +47,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         self.curMouseAction = 'SELECTION'
         self.curveType = 'LINE'
         self.polyAnchor = None
+        self.currentCurve = None
 
         self.panActive = False
         self.lastPanPos = QtCore.QPoint(0, 0)
@@ -64,21 +71,21 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         self.update()
 
     def _get_segments_safe(self):
-        if hasattr(self.he_view, 'getSegments'): return self.he_view.getSegments()
         if hasattr(self.he_model, 'getSegments'): return self.he_model.getSegments()
         if hasattr(self.he_model, 'segments'): return self.he_model.segments
+        if hasattr(self.he_view, 'getSegments'): return self.he_view.getSegments()
         return []
 
     def _get_patches_safe(self):
-        if hasattr(self.he_view, 'getPatches'): return self.he_view.getPatches()
         if hasattr(self.he_model, 'getPatches'): return self.he_model.getPatches()
         if hasattr(self.he_model, 'patches'): return self.he_model.patches
+        if hasattr(self.he_view, 'getPatches'): return self.he_view.getPatches()
         return []
 
     def _get_points_safe(self):
+        if hasattr(self.he_model, 'getPoints'): return self.he_model.getPoints()
         if hasattr(self.he_model, 'points'): return self.he_model.points
         if hasattr(self.he_view, 'getPoints'): return self.he_view.getPoints()
-        if hasattr(self.he_model, 'getPoints'): return self.he_model.getPoints()
         return []
     
     def _get_patch_points(self, patch):
@@ -134,6 +141,16 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             # NOTA: Removemos glBegin(GL_TRIANGLES) daqui pois o drawPatchWithTess gerencia isso internamente
             
             for patch in valid_patches:
+                
+                # Verificação robusta de isUnlimited (funciona se for método ou propriedade)
+                is_unlim = False
+                if hasattr(patch, 'isUnlimited'):
+                    attr = getattr(patch, 'isUnlimited')
+                    is_unlim = attr() if callable(attr) else attr
+                
+                if is_unlim:
+                    continue
+
                 if patch.isSelected():
                     glColor4f(1.0, 0.0, 0.0, 0.3) # Vermelho
                 else:
@@ -147,6 +164,14 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             glColor3f(1.0, 1.0, 1.0)
             
             for patch in deleted_patches:
+                # Verificação robusta de isUnlimited (funciona se for método ou propriedade)
+                is_unlim = False
+                if hasattr(patch, 'isUnlimited'):
+                    attr = getattr(patch, 'isUnlimited')
+                    is_unlim = attr() if callable(attr) else attr
+                
+                if is_unlim:
+                    continue
                 self.drawPatchWithTess(self._get_patch_points(patch))
 
         # 3. Segmentos (Camada superior - Linhas)
@@ -199,6 +224,26 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             glVertex2f(cx, cy)
             glEnd()
         
+        if self.currentCurve:
+            glColor3f(0.5, 0.5, 0.5)
+            glLineWidth(1.0)
+            
+            # Pega posição atual do mouse com Snap
+            curr = self.mousePos
+            currW = self.convertRasterPtToWorldCoords(curr)
+            cx, cy = currW.x(), currW.y()
+            cx, cy = self.snapToGridOrPoint(cx, cy)
+            mousePt = Point(cx, cy)
+            
+            # Gera o preview dinâmico
+            preview_pts = self.currentCurve.getEquivPolylineCollecting(mousePt)
+            
+            if preview_pts:
+                glBegin(GL_LINE_STRIP)
+                for p in preview_pts:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+        
         # 6. Retângulo de Seleção
         if self.isSelecting and self.curMouseAction == 'SELECTION':
             glEnable(GL_BLEND)
@@ -210,8 +255,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             ymin = min(pt0W.y(), currW.y())
             ymax = max(pt0W.y(), currW.y())
 
-            # Desenha preenchimento transparente
-            glColor4f(0.0, 0.0, 1.0, 0.1) # Azul bem claro
+            glColor4f(0.0, 0.0, 1.0, 0.1)
             glBegin(GL_QUADS)
             glVertex2f(xmin, ymin)
             glVertex2f(xmax, ymin)
@@ -219,8 +263,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             glVertex2f(xmin, ymax)
             glEnd()
 
-            # Desenha borda
-            glColor3f(0.0, 0.0, 1.0) # Azul
+            glColor3f(0.0, 0.0, 1.0)
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
             glVertex2f(xmin, ymin)
@@ -322,6 +365,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             self.he_ctrl.delSelectedEntities()
             print("Delete executed")
             self.update()
+            self.repaint()
             
         else:
             super().keyPressEvent(event)
@@ -344,6 +388,45 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
 
         if self.curMouseAction == 'COLLECTION':
             xw, yw = self.snapToGridOrPoint(xw, yw)
+        
+        if self.curMouseAction == 'COLLECTION' and self.curveType in ['QUADBEZIER', 'CUBICBEZIER', 'CIRCLE', 'CIRCLEARC']:
+            if self.currentCurve is None:
+                # Factory: Cria a instância correta
+                if self.curveType == 'QUADBEZIER': self.currentCurve = QuadBezier()
+                elif self.curveType == 'CUBICBEZIER': self.currentCurve = CubicBezier()
+                elif self.curveType == 'CIRCLE': self.currentCurve = Circle()
+                elif self.curveType == 'CIRCLEARC': self.currentCurve = CircleArc()
+            
+            # Adiciona o ponto clicado
+            self.currentCurve.addCtrlPoint(xw, yw)
+            
+            # Verifica se a curva está completa
+            is_done = False
+            if self.curveType == 'QUADBEZIER' and self.currentCurve.nPts == 3: is_done = True
+            elif self.curveType == 'CUBICBEZIER' and self.currentCurve.nPts == 4: is_done = True
+            elif self.curveType == 'CIRCLE' and self.currentCurve.nPts == 2: is_done = True
+            elif self.curveType == 'CIRCLEARC' and self.currentCurve.nPts == 3: is_done = True
+            
+            if is_done:
+                # Discretiza a curva em segmentos de linha
+                poly_pts = self.currentCurve.getEquivPolyline()
+                
+                # Insere os segmentos no HETool
+                if len(poly_pts) >= 2:
+                    for i in range(len(poly_pts) - 1):
+                        p1 = poly_pts[i]
+                        p2 = poly_pts[i+1]
+                        
+                        dx = p2.getX() - p1.getX()
+                        dy = p2.getY() - p1.getY()
+                        dist = math.sqrt(dx*dx + dy*dy)
+                        if dist > 1e-10:
+                            self.he_ctrl.insertSegment([p1.getX(), p1.getY(), p2.getX(), p2.getY()], self.pickTol)
+                
+                self.currentCurve = None # Reseta para a próxima
+            
+            self.update()
+            return
 
         if self.curMouseAction == 'SELECTION':
             if self.mouseButton == QtCore.Qt.LeftButton:
@@ -405,6 +488,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             return
         
         if self.polyAnchor: self.update()
+        if self.currentCurve: self.update()
     
     def mouseReleaseEvent(self, event):
         if event.button() == QtCore.Qt.MiddleButton:
@@ -467,6 +551,8 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     def setCurveType(self, curveType):
         self.curveType = curveType
         self.polyAnchor = None
+        self.currentCurve = None
+        self.update()
         
     def fitWorldToViewport(self):
         points = self._get_points_safe()
