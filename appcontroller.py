@@ -98,6 +98,7 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionIntersect.setVisible(False)
         self.actionJoin.setVisible(False)
         self.actionCreateRegion.setVisible(False)
+        self.actionMeshSegment.setVisible(False)
 
         
     ###########################################################
@@ -328,18 +329,12 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionMeshSegment.setChecked(False)
 
     def on_actionDomainMesh(self):
-        isTurnedOn = self.meshPatch.getDisplayInfo()
-        if not isTurnedOn:
-            self.meshPatchDialog.show()
-            self.meshPatch.setDisplayInfo(True)
-            self.actionDomainMesh.setChecked(True)
-        else:
-            self.meshPatchDialog.hide()
-            self.meshPatch.setDisplayInfo(False)
-            self.actionDomainMesh.setChecked(False)
+        self.meshPatch.setMeshGenerator(MeshGenerator.DELAUNAY_TRIANGULATION)
+        self.meshPatchDialog.radioButtonDelaunay.setChecked(True)
+        self.meshPatchApply()
 
     def meshPatchApply(self):
-        # Verifica qual opção foi selecionada no diálogo
+        # Eu não sei usar polimorfismo em python (skill issue)
         if self.meshPatchDialog.radioButtonBilinear.isChecked():
             type = MeshGenerator.TRANSFIN_BILINEAR
         elif self.meshPatchDialog.radioButtonTrilinear.isChecked():
@@ -351,7 +346,7 @@ class AppController(QMainWindow, Ui_MyApp):
         
         # Obtém patches selecionados
         # Importante: Copiamos a lista porque a inserção de segmentos vai modificar 
-        # a lista de patches do modelo (dividindo-os)
+        # a lista de patches do modelo (dividindo)
         selected_patches = list(self.model.getHeView().getSelectedPatches())
         
         he_controller = self.model.getHeController()

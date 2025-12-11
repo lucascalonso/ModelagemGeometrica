@@ -114,7 +114,13 @@ class CompGeom:
         v12 = _p2 - _p1
         v1p = _p - _p1
 
-        t = Point.dotprod(v12, v1p) / Point.sizesquare(v12)
+        # Corrigido contra divisão por zero (Lucas)
+        denom = Point.sizesquare(v12)
+        if denom < 1e-20:
+            dist = Point.euclidiandistance(_p1, _p)
+            return dist, _p1, 0.0
+
+        t = Point.dotprod(v12, v1p) / denom
 
         if abs(t) < CompGeom.ABSTOL or t < 0.0:
             pC = _p1
