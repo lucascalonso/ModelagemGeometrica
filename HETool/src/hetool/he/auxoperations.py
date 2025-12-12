@@ -230,6 +230,9 @@ class SetAttribute:
         self.attribute = _attribute
         self.oldAttribute = None
 
+        if not hasattr(self.entity, 'attributes') or self.entity.attributes is None:
+            self.entity.attributes = []
+
         for att in self.entity.attributes:
             if att['type'] == self.attribute['type']:
                 self.oldAttribute = att
@@ -237,7 +240,7 @@ class SetAttribute:
 
     def name(self):
         return 'SET_ATTRIBUTE'
-
+    
     def execute(self):
         if self.oldAttribute is not None:
             self.entity.attributes.remove(self.oldAttribute)
@@ -246,7 +249,7 @@ class SetAttribute:
     def unexecute(self):
         self.entity.attributes.remove(self.attribute)
         if self.oldAttribute is not None:
-            self.entity.attributes.append(self.oldAttribute)
+            self.entity.attributes.remove(self.oldAttribute)
 
 
 class UnSetAttribute:

@@ -1689,3 +1689,35 @@ class HeController:
 
         self.undoredo.end()
         self.update()
+
+    def createAndApplyAttribute(self, name, value, data_type, color="#000000"):
+        """
+        Cria (ou atualiza) um atributo dinâmico e o aplica à seleção.
+        """
+        attr = self.attManager.getAttributeByName(name)
+        
+        val_type = ["string"]
+        if data_type == "Float": val_type = ["float"]
+        elif data_type == "Integer": val_type = ["int"]
+        elif data_type == "Vector (x,y)": val_type = ["float", "float"]
+
+        if attr is None:
+            attr = {
+                "type": name,          
+                "name": name,
+                "symbol": "None",      
+                "properties": { "Value": value },
+                "properties_type": val_type,
+                "applyOnVertex": True, 
+                "applyOnEdge": True,
+                "applyOnFace": True,
+                "textcolor": color # <--- Salvamos a cor aqui
+            }
+            self.attManager.attributes.append(attr)
+        else:
+            attr['properties']['Value'] = value
+            attr['properties_type'] = val_type
+            attr['textcolor'] = color # <--- Atualizamos a cor se já existir
+        
+        self.setAttribute(name)
+        self.update()

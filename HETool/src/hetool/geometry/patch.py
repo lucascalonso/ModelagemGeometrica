@@ -11,11 +11,12 @@ class Patch:
         self.segmentOrients = _segmentOrients if _segmentOrients is not None else []
         self.mesh = None
         self.selected = False
-        self.holes = []  # vector of region holes
+        self.holes = []
         self.holesOrients = []
         self.isDeleted = False
         self.face = None
-        self.triangles = [] # Adicionado para armazenar a tesselação
+        self.triangles = []
+        self.attributes = []
 
 
     def __del__(self):

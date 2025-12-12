@@ -14,12 +14,16 @@ from mesh.meshsegmentdialog import MeshSegmentDialog
 from mesh.meshpatchdialog import MeshPatchDialog
 from hetool.compgeom.compgeom import CompGeom
 from hetool.geometry.point import Point
+from attributedialog import AttributeDialog
+from attributeviewer import AttributeViewer
 
 
 class AppController(QMainWindow, Ui_MyApp):
     def __init__(self):
         super().__init__()
         super().setupUi(self)
+
+        self.resize(1250,800)
 
         # Create model object, view object, and curve collector object
         # CORREÇÃO: Instancia AppModel sem passar 'self'
@@ -28,6 +32,10 @@ class AppController(QMainWindow, Ui_MyApp):
         self.collector = CurveCollector(self.model)
         self.reshape = CurveReshape(self.model)
         self.view = AppView(self.model, self.reshape)
+
+        # Para visualizador de Atributos
+        self.attrViewer = AttributeViewer(self)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.attrViewer)
 
         # Create grid and grid dialog
         self.grid = Grid()
@@ -92,13 +100,17 @@ class AppController(QMainWindow, Ui_MyApp):
         #self.actionJoin.triggered.connect(self.joinSegments)
         self.actionSplit.triggered.connect(self.on_actionSplit)
         #self.actionCreateRegion.triggered.connect(self.createRegion)
-        self.actionMeshSegment.triggered.connect(self.on_actionMeshSegment)
+        self.actionMeshSegment.triggered.connect(self.on_actionAttributes)
+        self.actionMeshSegment.setText("Attributes")
+        self.actionMeshSegment.setCheckable(False)
         self.actionDomainMesh.triggered.connect(self.on_actionDomainMesh)
 
         self.actionIntersect.setVisible(False)
         self.actionJoin.setVisible(False)
         self.actionCreateRegion.setVisible(False)
-        self.actionMeshSegment.setVisible(False)
+
+        # Conecta o sinal do Canvas para atualizar o painel lateral
+        self.glcanvas.selectionChanged.connect(self.update_attribute_panel)
 
         
     ###########################################################
@@ -438,3 +450,33 @@ class AppController(QMainWindow, Ui_MyApp):
     def meshPatchCloseEvent(self):
         self.actionDomainMesh.setChecked(False)
         self.meshPatch.setDisplayInfo(False)
+
+    def update_attribute_panel(self):
+        self.attrViewer.update_view(self.model.getHeController())
+    
+    def on_actionAttributes(self):
+        """
+        Abre o diálogo para criar e aplicar atributos nas entidades selecionadas.
+        """
+        he_ctrl = self.model.getHeController()
+        
+        # Verifica se há algo selecionado
+        n_sel = (len(he_ctrl.hemodel.selectedVertices()) + 
+                 len(he_ctrl.hemodel.selectedEdges()) + 
+                 len(he_ctrl.hemodel.selectedFaces()))
+                 
+        if n_sel == 0:
+            self.popupMessage("Selecione alguma entidade (Vértice, Aresta ou Região) primeiro.")
+            return
+
+        dialog = AttributeDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            if data:
+                # CORREÇÃO: Desempacota os 4 valores (incluindo a cor)
+                name, value, dtype, color = data
+                
+                # Passa a cor para o método do controlador
+                he_ctrl.createAndApplyAttribute(name, value, dtype, color)
+                
+                self.popupMessage(f"Atributo '{name}' aplicado com sucesso.")

@@ -1,4 +1,5 @@
 from PySide6 import QtOpenGLWidgets, QtCore, QtGui
+from PySide6.QtCore import Signal 
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
@@ -19,6 +20,9 @@ from geometry.curves.circlearc import CircleArc
 from hetool.geometry.point import Point
 
 class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
+
+    selectionChanged = Signal() 
+
     def __init__(self, _controller):
         super().__init__()
         self.controller = _controller
@@ -549,6 +553,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                 self.he_ctrl.selectFence(xmin, xmax, ymin, ymax, shift)
             
             self.update()
+            self.selectionChanged.emit()
 
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
