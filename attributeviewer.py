@@ -1,10 +1,10 @@
 from PySide6.QtWidgets import (QDockWidget, QTreeWidget, QTreeWidgetItem, QWidget, 
-                               QVBoxLayout, QPushButton, QColorDialog)
+                                QVBoxLayout)
 from PySide6.QtCore import Qt
 
 class AttributeViewer(QDockWidget):
     def __init__(self, parent=None):
-        super().__init__("Inspector de Atributos", parent)
+        super().__init__("Attribute Manager", parent)
         self.setAllowedAreas(Qt.RightDockWidgetArea | Qt.LeftDockWidgetArea)
         
         # Widget principal do Dock
@@ -14,45 +14,27 @@ class AttributeViewer(QDockWidget):
         
         # Árvore de propriedades
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Entidade / Atributo", "Valor"])
+        self.tree.setHeaderLabels(["Entity / Attribute", "Value"])
         self.tree.setColumnWidth(0, 150)
 
-        # Cor inicial
-        self.text_color = "#333333"
-        self.update_style()
+        self.tree.setStyleSheet("""
+            QTreeWidget {
+                background-color: #ECECEC; 
+                color: #333333;
+                border: none;
+            }
+            QHeaderView::section {
+                background-color: #DCDCDC;
+                color: #333333;
+                padding: 4px;
+                border: 1px solid #C0C0C0;
+            }
+        """)
         
         self.layout.addWidget(self.tree)
-        
-        # Botão para escolher cor
-        self.btn_color = QPushButton("Escolher Cor do Texto")
-        self.btn_color.clicked.connect(self.pick_color)
-        self.layout.addWidget(self.btn_color)
-
         self.main_widget.setLayout(self.layout)
         self.setWidget(self.main_widget)
 
-    def update_style(self):
-        """Aplica o CSS com a cor de texto atual."""
-        self.tree.setStyleSheet(f"""
-            QTreeWidget {{
-                background-color: #ECECEC; 
-                color: {self.text_color};
-                border: none;
-            }}
-            QHeaderView::section {{
-                background-color: #DCDCDC;
-                color: {self.text_color};
-                padding: 4px;
-                border: 1px solid #C0C0C0;
-            }}
-        """)
-
-    def pick_color(self):
-        """Abre o diálogo de cor e atualiza a interface."""
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.text_color = color.name()
-            self.update_style()
 
     def update_view(self, he_controller):
         """Atualiza a árvore com base na seleção atual do controlador."""
@@ -72,30 +54,32 @@ class AttributeViewer(QDockWidget):
 
         # --- Vértices ---
         if sel_vertices:
-            root_v = QTreeWidgetItem(self.tree, [f"Vértices ({len(sel_vertices)})", ""])
+            root_v = QTreeWidgetItem(self.tree, [f"Vertices ({len(sel_vertices)})", ""])
             root_v.setExpanded(True)
             for i, v in enumerate(sel_vertices):
                 pt = v.point
-                coords = f"({pt.getX():.2f}, {pt.getY():.2f})"
-                item = QTreeWidgetItem(root_v, [f"Vértice {i+1}", coords])
+                item = QTreeWidgetItem(root_v, [f"Vertex {i+1}", ""])
+                item.setExpanded(True) 
                 self._add_attributes_to_item(item, pt)
 
-        # --- Arestas ---
+        # --- Arestas (Segmentos) ---
         if sel_edges:
-            root_e = QTreeWidgetItem(self.tree, [f"Arestas ({len(sel_edges)})", ""])
+            root_e = QTreeWidgetItem(self.tree, [f"Edges ({len(sel_edges)})", ""])
             root_e.setExpanded(True)
             for i, e in enumerate(sel_edges):
                 seg = e.segment
-                item = QTreeWidgetItem(root_e, [f"Aresta {i+1}", ""])
+                item = QTreeWidgetItem(root_e, [f"Edge {i+1}", ""])
+                item.setExpanded(True)
                 self._add_attributes_to_item(item, seg)
 
-        # --- Regiões ---
+        # --- Faces (Regiões) ---
         if sel_faces:
-            root_f = QTreeWidgetItem(self.tree, [f"Regiões ({len(sel_faces)})", ""])
+            root_f = QTreeWidgetItem(self.tree, [f"Faces ({len(sel_faces)})", ""])
             root_f.setExpanded(True)
             for i, f in enumerate(sel_faces):
                 patch = f.patch
-                item = QTreeWidgetItem(root_f, [f"Região {i+1}", ""])
+                item = QTreeWidgetItem(root_f, [f"Face {i+1}", ""])
+                item.setExpanded(True) 
                 self._add_attributes_to_item(item, patch)
 
     def _add_attributes_to_item(self, parent_item, entity):

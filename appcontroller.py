@@ -433,13 +433,13 @@ class AppController(QMainWindow, Ui_MyApp):
             # (Se o HETool tiver suporte a batch, seria ideal, mas faremos um loop)
             count = 0
             total = len(segments_to_insert)
-            print(f"Inserindo {total} arestas na malha...")
+            print(f"Inserting {total} edges into the mesh...")
             
             for coords in segments_to_insert:
                 he_controller.insertSegment(coords, self.glcanvas.pickTol)
                 count += 1
                 if count%10 == 0:
-                    print(f"Processando...{count}/{total}")
+                    print(f"Processing...{count}/{total}")
             self.glcanvas.update()
 
     def meshPatchClose(self):
@@ -466,7 +466,7 @@ class AppController(QMainWindow, Ui_MyApp):
                  len(he_ctrl.hemodel.selectedFaces()))
                  
         if n_sel == 0:
-            self.popupMessage("Selecione alguma entidade (Vértice, Aresta ou Região) primeiro.")
+            self.popupMessage("Select an entity (Vertex, Edge, or Region) first.")
             return
 
         dialog = AttributeDialog(self)
@@ -479,4 +479,7 @@ class AppController(QMainWindow, Ui_MyApp):
                 # Passa a cor para o método do controlador
                 he_ctrl.createAndApplyAttribute(name, value, dtype, color)
                 
-                self.popupMessage(f"Atributo '{name}' aplicado com sucesso.")
+                self.popupMessage(f"Attribute '{name}' applied successfully.")
+                self.update_attribute_panel()
+            else:
+                self.popupMessage("Invalid Data! Check the entered values.")

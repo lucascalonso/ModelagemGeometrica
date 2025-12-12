@@ -4,34 +4,32 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
 class AttributeDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Gerenciar Atributos")
+        self.setWindowTitle("Attribute Manager")
         self.resize(300, 250)
         
         layout = QVBoxLayout()
         
         # Nome do Atributo
-        layout.addWidget(QLabel("Nome do Atributo:"))
+        layout.addWidget(QLabel("Name:"))
         self.nameEdit = QLineEdit()
-        self.nameEdit.setPlaceholderText("Ex: Material, Força")
         layout.addWidget(self.nameEdit)
         
         # Tipo de Dado
-        layout.addWidget(QLabel("Tipo de Dado:"))
+        layout.addWidget(QLabel("Data Type:"))
         self.typeCombo = QComboBox()
         self.typeCombo.addItems(["String", "Float", "Integer", "Vector (x,y)"])
         layout.addWidget(self.typeCombo)
         
-        # Valor
-        layout.addWidget(QLabel("Valor:"))
+        # Value
+        layout.addWidget(QLabel("Value:"))
         self.valueEdit = QLineEdit()
-        self.valueEdit.setPlaceholderText("Ex: Aço, 10.5")
         layout.addWidget(self.valueEdit)
 
         # --- Seletor de Cor ---
         self.selected_color = "#000000" # Preto por padrão
         
         colorLayout = QHBoxLayout()
-        self.btnColor = QPushButton("Escolher Cor do Texto")
+        self.btnColor = QPushButton("Attribute Color")
         self.btnColor.clicked.connect(self.pick_color)
         
         self.lblColorPreview = QLabel("■") # Quadrado de preview
@@ -44,8 +42,8 @@ class AttributeDialog(QDialog):
         
         # Botões
         btnLayout = QHBoxLayout()
-        self.btnApply = QPushButton("Aplicar à Seleção")
-        self.btnCancel = QPushButton("Cancelar")
+        self.btnApply = QPushButton("Apply")
+        self.btnCancel = QPushButton("Cancel")
         
         btnLayout.addWidget(self.btnApply)
         btnLayout.addWidget(self.btnCancel)
@@ -76,7 +74,7 @@ class AttributeDialog(QDialog):
                 value = float(raw_value)
             elif dtype == "Integer":
                 value = int(raw_value)
-            elif dtype == "Vector (x,y)":
+            elif dtype == "Vector":
                 parts = raw_value.split(',')
                 if len(parts) != 2: raise ValueError
                 value = [float(parts[0]), float(parts[1])]
