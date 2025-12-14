@@ -1,5 +1,5 @@
 from PySide6 import QtCore
-from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QMessageBox
+from PySide6.QtWidgets import QMainWindow, QHBoxLayout, QMessageBox, QFileDialog
 from griddialog import GridDialog
 from grid import Grid
 from appmodel import AppModel
@@ -26,7 +26,6 @@ class AppController(QMainWindow, Ui_MyApp):
         self.resize(1250,800)
 
         # Create model object, view object, and curve collector object
-        # CORREÇÃO: Instancia AppModel sem passar 'self'
         self.model = AppModel() 
         
         self.collector = CurveCollector(self.model)
@@ -85,6 +84,10 @@ class AppController(QMainWindow, Ui_MyApp):
         self.actionPanRight.triggered.connect(self.glcanvas.panRight)
         self.actionPanUp.triggered.connect(self.glcanvas.panUp)
         self.actionPanDown.triggered.connect(self.glcanvas.panDown)
+        
+        # --- Ações de Arquivo (NOVO) ---
+        self.actionSave.triggered.connect(self.on_actionSave)
+        self.actionOpen.triggered.connect(self.on_actionOpen)
 
         # Modeling Control ToolBar Actions
         self.actionSelect.triggered.connect(self.on_actionSelect)
@@ -112,12 +115,54 @@ class AppController(QMainWindow, Ui_MyApp):
         # Conecta o sinal do Canvas para atualizar o painel lateral
         self.glcanvas.selectionChanged.connect(self.update_attribute_panel)
 
+    # ... (MÉTODOS EXISTENTES PERMANECEM IGUAIS) ...
+    # ... (closeEvent, on_actionSelect, on_actionDelete, etc.) ...
+    
+    # ---------------------------------------------------------
+    # --- NOVOS MÉTODOS PARA SALVAR E CARREGAR ---
+    # ---------------------------------------------------------
+    def on_actionSave(self):
+        """Salva o modelo atual e seus atributos em um arquivo JSON."""
+        # Abre diálogo para escolher onde salvar
+        filename, _ = QFileDialog.getSaveFileName(self, "Salvar Arquivo", "", "JSON Files (*.json)")
         
-    ###########################################################
-    #                                                         #
-    #             Program close callback method               #
-    #                                                         #
-    ###########################################################
+        if filename:
+            # Garante a extensão .json
+            if not filename.lower().endswith(".json"):
+                filename += ".json"
+                
+            try:
+                # Chama o método do HETool que já trata topologia e atributos
+                self.model.getHeController().saveFile(filename)
+                self.popupMessage(f"Arquivo salvo com sucesso em:\n{filename}")
+            except Exception as e:
+                self.popupMessage(f"Erro ao salvar arquivo:\n{str(e)}")
+
+    def on_actionOpen(self):
+        """Carrega um modelo de arquivo JSON, limpando o atual."""
+        # Abre diálogo para escolher o arquivo
+        filename, _ = QFileDialog.getOpenFileName(self, "Abrir Arquivo", "", "JSON Files (*.json)")
+        
+        if filename:
+            try:
+                # O método openFile do HETool limpa o modelo atual antes de carregar
+                self.model.getHeController().openFile(filename)
+                
+                # Atualiza a visualização
+                self.glcanvas.fitWorldToViewport()
+                self.glcanvas.update()
+                
+                # Atualiza o painel de atributos (que agora estará vazio de seleção)
+                self.update_attribute_panel()
+                
+            except Exception as e:
+                self.popupMessage(f"Erro ao abrir arquivo:\n{str(e)}")
+
+    # ... (RESTANTE DOS MÉTODOS EXISTENTES) ...
+    # Copie os métodos existentes abaixo: closeEvent, on_actionSelect, grid methods, etc.
+    # Certifique-se de manter os métodos que já estavam no arquivo original.
+
+    # Exemplo de onde colar o restante (apenas referência, use seu código original):
     def closeEvent(self, _event):
         self.gridDialog.close()
         self.meshSegmentDialog.close()
@@ -460,24 +505,20 @@ class AppController(QMainWindow, Ui_MyApp):
         """
         he_ctrl = self.model.getHeController()
         
-        # Verifica se há algo selecionado
         n_sel = (len(he_ctrl.hemodel.selectedVertices()) + 
                  len(he_ctrl.hemodel.selectedEdges()) + 
                  len(he_ctrl.hemodel.selectedFaces()))
-                 
         if n_sel == 0:
-            self.popupMessage("Select an entity (Vertex, Edge, or Region) first.")
+            self.popupMessage("Select an entity first.")
             return
 
         dialog = AttributeDialog(self)
         if dialog.exec():
             data = dialog.get_data()
             if data:
-                # CORREÇÃO: Desempacota os 4 valores (incluindo a cor)
-                name, value, dtype, color = data
+                name, value, dtype, color, targets = data
                 
-                # Passa a cor para o método do controlador
-                he_ctrl.createAndApplyAttribute(name, value, dtype, color)
+                he_ctrl.createAndApplyAttribute(name, value, dtype, color, targets)
                 
                 self.popupMessage(f"Attribute '{name}' applied successfully.")
                 self.update_attribute_panel()

@@ -32,13 +32,10 @@ class HeFile():
         vertices_list = []
         for vertex in vertices:
 
-            attributes = vertex.point.attributes
-            att_list = []
-            for att in attributes:
-                att_list.append(att['name'])
+            attributes_data = [att.copy() for att in vertex.point.attributes]
 
             attributes_dict = {
-                "att_names": att_list
+                "entity_attributes": attributes_data
             }
 
             if vertex.prev is None:
@@ -71,16 +68,20 @@ class HeFile():
             for pt in edge_pts:
                 pts.append([pt.getX(), pt.getY()])
 
+            # Handle attributes
             attributes = edge.segment.attributes.copy()
+            
+            # Remove nsudv from the general list to avoid duplication if saved explicitly
             if edge.segment.nsudv is not None:
-                attributes.remove(edge.segment.nsudv)
-            att_list = []
-            for att in attributes:
-                att_list.append(att['name'])
+                if edge.segment.nsudv in attributes:
+                    attributes.remove(edge.segment.nsudv)
+            
+            # Save remaining attributes as full dictionaries
+            attributes_data = [att.copy() for att in attributes]
 
             attributes_dict = {
-                "nsudv": edge.segment.nsudv,
-                "att_names": att_list
+                "nsudv": edge.segment.nsudv, # Saves the specific nsudv dict
+                "entity_attributes": attributes_data # Saves other attributes
             }
 
             if edge.prev is None:
@@ -202,21 +203,22 @@ class HeFile():
                 intLoops.append(intLoop_dict)
                 intLoop = intLoop.next
 
+            # Handle attributes
             attributes = face.patch.attributes.copy()
             if face.patch.mesh is not None:
                 mesh_dict = face.patch.mesh.mesh_dict
-                attributes.remove(mesh_dict)
+                if mesh_dict in attributes:
+                    attributes.remove(mesh_dict)
             else:
                 mesh_dict = None
 
-            att_list = []
-            for att in attributes:
-                att_list.append(att['name'])
+            # Save remaining attributes as full dictionaries
+            attributes_data = [att.copy() for att in attributes]
 
             attributes_dict = {
                 'isDeleted': face.patch.isDeleted,
                 'mesh': mesh_dict,
-                "att_names": att_list
+                "entity_attributes": attributes_data
             }
 
             if face.prev is None:
@@ -289,12 +291,12 @@ class HeFile():
             edge.segment = segment
 
             # set segment attributes
-            att_names = edge_dict['attributes']['att_names']
-            for att_name in att_names:
-                for attribute in attributes:
-                    if att_name == attribute['name']:
-                        segment.attributes.append(attribute)
+            if 'entity_attributes' in edge_dict['attributes']:
+                segment.attributes = edge_dict['attributes']['entity_attributes']
+            else:
+                segment.attributes = []
 
+            # Handle nsudv
             if edge_dict['attributes']['nsudv'] is not None:
                 segment.setNumberOfSubdivisions(
                     edge_dict['attributes']['nsudv'])
@@ -313,11 +315,10 @@ class HeFile():
             vertex.point = Point(pt[0], pt[1])
 
             # set point attributes
-            att_names = vertex_dict['attributes']['att_names']
-            for att_name in att_names:
-                for attribute in attributes:
-                    if att_name == attribute['name']:
-                        vertex.point.attributes.append(attribute)
+            if 'entity_attributes' in vertex_dict['attributes']:
+                vertex.point.attributes = vertex_dict['attributes']['entity_attributes']
+            else:
+                vertex.point.attributes = []
 
         # creates the faces
         for face_dict in faces:
@@ -326,11 +327,10 @@ class HeFile():
             face.ID = face_dict['ID']
 
             # set patch attributes
-            att_names = face_dict['attributes']['att_names']
-            for att_name in att_names:
-                for attribute in attributes:
-                    if att_name == attribute['name']:
-                        face.patch.attributes.append(attribute)
+            if 'entity_attributes' in face_dict['attributes']:
+                face.patch.attributes = face_dict['attributes']['entity_attributes']
+            else:
+                face.patch.attributes = []
 
             # creates a key for the face
             face_dict['face'] = face
@@ -427,6 +427,8 @@ class HeFile():
                             else:
                                 he.edge.he2 = he
                                 he.edge.segment.setEndPoint(he.vertex.point)
+
+                            break
 
                 # set he.prev/next
                 he_dicts[0]['he'].prev = he_dicts[-1]['he']

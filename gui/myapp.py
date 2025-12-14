@@ -14,6 +14,10 @@ class Ui_MyApp(object):
         self.canvas.setObjectName("canvas")
         MainWindow.setCentralWidget(self.canvas)
 
+        # --- Criação do Menu Bar (NOVO) ---
+        self.menubar = MainWindow.menuBar()
+        self.menuFile = self.menubar.addMenu("Arquivo")
+
         # --- Criação das Toolbars ---
         # Toolbar de Controle de Visualização
         viewToolbar = QToolBar("Visualização", MainWindow)
@@ -22,6 +26,13 @@ class Ui_MyApp(object):
         # Toolbar de Controle de Modelagem
         modelToolbar = QToolBar("Modelagem", MainWindow)
         MainWindow.addToolBar(modelToolbar)
+
+        # --- Ações de Arquivo (NOVO) ---
+        self.actionOpen = QAction("Abrir", MainWindow)
+        self.menuFile.addAction(self.actionOpen)
+
+        self.actionSave = QAction("Salvar", MainWindow)
+        self.menuFile.addAction(self.actionSave)
 
         # --- Ações de Visualização ---
         self.actionFit = QAction("Fit", MainWindow)

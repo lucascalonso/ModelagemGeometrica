@@ -13,6 +13,7 @@ from hetool.he.hefile import HeFile
 from hetool.geometry.attributes.attribmanager import AttribManager
 from hetool.geometry.attributes.attribsymbols import AttribSymbols
 import math
+import copy
 
 from hetool.he.auxoperations import (
     Flip,
@@ -1441,120 +1442,123 @@ class HeController:
         self.isChanged = False
 
     def setAttribute(self, _name):
+        # Pega a definição "padrão" atual do gerenciador (ex: com valor 5)
+        base_attribute = self.attManager.getAttributeByName(_name)
+        if base_attribute is None:
+            return
 
-        attribute = self.attManager.getAttributeByName(_name)
         self.undoredo.begin()
 
-        if attribute['applyOnVertex']:
-            points = self.hemodel.getPoints()
+        # Função auxiliar para aplicar em listas de entidades (pontos, segmentos, patches)
+        def apply_to_entities(entities):
+            for entity in entities:
+                if entity.isSelected():
+                    entity.setSelected(False)
+                    
+                    # 1. CRIA UMA CÓPIA INDEPENDENTE DO ATRIBUTO
+                    # Isso garante que mudar o valor no futuro não afete esta entidade
+                    attr_copy = copy.deepcopy(base_attribute)
 
-            for pt in points:
-                if pt.isSelected():
-                    pt.setSelected(False)
-                    setAtt = SetAttribute(pt, attribute)
+                    # 2. REMOVE ATRIBUTO ANTIGO DE MESMO NOME (SE EXISTIR)
+                    # Assim garantimos que estamos substituindo (3 -> 5) e não acumulando
+                    existing_att = None
+                    if hasattr(entity, 'attributes'):
+                        for att in entity.attributes:
+                            if att['name'] == _name:
+                                existing_att = att
+                                break
+                    
+                    if existing_att:
+                        unset = UnSetAttribute(entity, existing_att)
+                        unset.execute()
+                        self.undoredo.insertOperation(unset)
+
+                    # 3. APLICA O NOVO ATRIBUTO COPIADO
+                    setAtt = SetAttribute(entity, attr_copy)
                     setAtt.execute()
                     self.undoredo.insertOperation(setAtt)
 
-        if attribute['applyOnEdge']:
-            segments = self.hemodel.getSegments()
+                    # Lógica específica para condições de suporte em arestas
+                    if attr_copy['type'] == 'Support Conditions' and hasattr(entity, 'edge'):
+                        seg_vertices = entity.edge.incidentVertices()
+                        # Aplica também nos vértices da aresta
+                        for v in seg_vertices:
+                            # Verifica se vértice já tem esse atributo pelo nome
+                            v_has_attr = False
+                            for vatt in v.point.attributes:
+                                if vatt['name'] == _name:
+                                    v_has_attr = True
+                                    break
+                            
+                            if not v_has_attr:
+                                # Copia também para o vértice
+                                v_attr_copy = copy.deepcopy(base_attribute)
+                                setAttV = SetAttribute(v.point, v_attr_copy)
+                                setAttV.execute()
+                                self.undoredo.insertOperation(setAttV)
 
-            for seg in segments:
-                if seg.isSelected():
-                    seg.setSelected(False)
-                    setAtt = SetAttribute(seg, attribute)
-                    setAtt.execute()
-                    self.undoredo.insertOperation(setAtt)
+        # Aplica nas entidades corretas baseado nas flags
+        if base_attribute['applyOnVertex']:
+            apply_to_entities(self.hemodel.getPoints())
 
-                    # change the support conditions of the segment points
-                    if attribute['type'] == 'Support Conditions':
-                        seg_vertices = seg.edge.incidentVertices()
-                        if attribute not in seg_vertices[0].point.attributes:
-                            setAtt = SetAttribute(
-                                seg_vertices[0].point, attribute)
-                            setAtt.execute()
-                            self.undoredo.insertOperation(setAtt)
+        if base_attribute['applyOnEdge']:
+            apply_to_entities(self.hemodel.getSegments())
 
-                        if attribute not in seg_vertices[1].point.attributes:
-                            setAtt = SetAttribute(
-                                seg_vertices[-1].point, attribute)
-                            setAtt.execute()
-                            self.undoredo.insertOperation(setAtt)
-
-        if attribute['applyOnFace']:
-            patches = self.hemodel.getPatches()
-
-            for patch in patches:
-                if patch.isSelected() and not patch.isDeleted:
-                    patch.setSelected(False)
-                    setAtt = SetAttribute(patch, attribute)
-                    setAtt.execute()
-                    self.undoredo.insertOperation(setAtt)
+        if base_attribute['applyOnFace']:
+            apply_to_entities(self.hemodel.getPatches())
 
         self.undoredo.end()
         self.isChanged = True
 
     def unSetAttribute(self, _name):
-
-        attribute = self.attManager.getAttributeByName(_name)
+        # Não usamos mais o objeto do gerenciador para comparação direta
+        # Apenas usamos o nome para buscar na entidade
         self.undoredo.begin()
 
-        if attribute['applyOnVertex']:
-            points = self.hemodel.getPoints()
-
-            for pt in points:
-                if pt.isSelected():
-                    pt.setSelected(False)
-                    if attribute in pt.attributes:
-                        unsetAtt = UnSetAttribute(pt, attribute)
+        def remove_from_entities(entities):
+            for entity in entities:
+                if entity.isSelected():
+                    entity.setSelected(False)
+                    
+                    # Procura atributo na entidade que tenha esse NOME
+                    target_att = None
+                    if hasattr(entity, 'attributes'):
+                        for att in entity.attributes:
+                            if att['name'] == _name:
+                                target_att = att
+                                break
+                    
+                    if target_att:
+                        unsetAtt = UnSetAttribute(entity, target_att)
                         unsetAtt.execute()
                         self.undoredo.insertOperation(unsetAtt)
 
-        if attribute['applyOnEdge']:
-            segments = self.hemodel.getSegments()
+                        # Lógica de atualização de malha/suporte (preservada do original)
+                        if target_att['type'] == 'Number of Subdivisions' and hasattr(entity, 'edge'):
+                            face1 = entity.edge.he1.loop.face
+                            face2 = entity.edge.he2.loop.face
+                            if face1.patch.mesh is not None: self.delMesh(face1)
+                            if face2.patch.mesh is not None: self.delMesh(face2)
 
-            for seg in segments:
-                if seg.isSelected():
-                    seg.setSelected(False)
-                    if attribute in seg.attributes:
-                        unsetAtt = UnSetAttribute(seg, attribute)
-                        unsetAtt.execute()
-                        self.undoredo.insertOperation(unsetAtt)
+                        elif target_att['type'] == 'Support Conditions' and hasattr(entity, 'edge'):
+                            seg_vertices = entity.edge.incidentVertices()
+                            for v in seg_vertices:
+                                # Remove do vértice também se tiver o mesmo nome
+                                v_target = None
+                                for vatt in v.point.attributes:
+                                    if vatt['name'] == _name:
+                                        v_target = vatt
+                                        break
+                                if v_target:
+                                    unsetAttV = UnSetAttribute(v.point, v_target)
+                                    unsetAttV.execute()
+                                    self.undoredo.insertOperation(unsetAttV)
 
-                        # update mesh
-                        if attribute['type'] == 'Number of Subdivisions':
-                            face1 = seg.edge.he1.loop.face
-                            face2 = seg.edge.he2.loop.face
-
-                            if face1.patch.mesh is not None:
-                                self.delMesh(face1)
-
-                            if face2.patch.mesh is not None:
-                                self.delMesh(face2)
-
-                        # change the support conditions of the segment points
-                        elif attribute['type'] == 'Support Conditions':
-                            seg_vertices = seg.edge.incidentVertices()
-                            if attribute in seg_vertices[0].point.attributes:
-                                unsetAtt = UnSetAttribute(
-                                    seg_vertices[0].point, attribute)
-                                unsetAtt.execute()
-                                self.undoredo.insertOperation(unsetAtt)
-
-                            if attribute in seg_vertices[1].point.attributes:
-                                unsetAtt = UnSetAttribute(
-                                    seg_vertices[-1].point, attribute)
-                                unsetAtt.execute()
-                                self.undoredo.insertOperation(unsetAtt)
-
-        if attribute['applyOnFace']:
-            patches = self.hemodel.getPatches()
-            for patch in patches:
-                if patch.isSelected() and not patch.isDeleted:
-                    patch.setSelected(False)
-                    if attribute in patch.attributes:
-                        unsetAtt = UnSetAttribute(patch, attribute)
-                        unsetAtt.execute()
-                        self.undoredo.insertOperation(unsetAtt)
+        # Como não sabemos se o atributo original tinha as flags applyOn..., 
+        # tentamos remover de todas as seleções possíveis. O "if target_att" protege contra erros.
+        remove_from_entities(self.hemodel.getPoints())
+        remove_from_entities(self.hemodel.getSegments())
+        remove_from_entities(self.hemodel.getPatches())
 
         self.undoredo.end()
         self.isChanged = True
@@ -1690,9 +1694,10 @@ class HeController:
         self.undoredo.end()
         self.update()
 
-    def createAndApplyAttribute(self, name, value, data_type, color="#000000"):
+    # Altere a assinatura do método para aceitar 'targets'
+    def createAndApplyAttribute(self, name, value, data_type, color="#000000", targets=None):
         """
-        Cria (ou atualiza) um atributo dinâmico e o aplica à seleção.
+        Cria (ou atualiza) um atributo dinâmico com alvos específicos.
         """
         attr = self.attManager.getAttributeByName(name)
         
@@ -1701,6 +1706,10 @@ class HeController:
         elif data_type == "Integer": val_type = ["int"]
         elif data_type == "Vector (x,y)": val_type = ["float", "float"]
 
+        # Define padrão se targets não for passado (para compatibilidade)
+        if targets is None:
+            targets = {"vertex": True, "edge": True, "face": True}
+
         if attr is None:
             attr = {
                 "type": name,          
@@ -1708,16 +1717,21 @@ class HeController:
                 "symbol": "None",      
                 "properties": { "Value": value },
                 "properties_type": val_type,
-                "applyOnVertex": True, 
-                "applyOnEdge": True,
-                "applyOnFace": True,
-                "textcolor": color # <--- Salvamos a cor aqui
+                # AQUI ESTÁ O TRUQUE: Usamos o que veio do diálogo
+                "applyOnVertex": targets["vertex"], 
+                "applyOnEdge": targets["edge"],
+                "applyOnFace": targets["face"],
+                "textcolor": color 
             }
             self.attManager.attributes.append(attr)
         else:
+            # Se já existe, atualizamos os valores e também ONDE ele aplica
             attr['properties']['Value'] = value
             attr['properties_type'] = val_type
-            attr['textcolor'] = color # <--- Atualizamos a cor se já existir
+            attr['textcolor'] = color
+            attr['applyOnVertex'] = targets["vertex"]
+            attr['applyOnEdge'] = targets["edge"]
+            attr['applyOnFace'] = targets["face"]
         
         self.setAttribute(name)
         self.update()
