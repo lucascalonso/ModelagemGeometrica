@@ -508,11 +508,28 @@ class AppController(QMainWindow, Ui_MyApp):
         n_sel = (len(he_ctrl.hemodel.selectedVertices()) + 
                  len(he_ctrl.hemodel.selectedEdges()) + 
                  len(he_ctrl.hemodel.selectedFaces()))
+                 
         if n_sel == 0:
-            self.popupMessage("Select an entity first.")
+            self.popupMessage("Select an entity (Vertex, Edge, or Region) first.")
             return
 
-        dialog = AttributeDialog(self)
+        # Coleta atributos já criados E protótipos (modelos)
+        created_attrs = he_ctrl.attManager.getAttributes()
+        prototypes = he_ctrl.attManager.getPrototypes()
+        
+        # Junta as duas listas para o combo (evitando duplicatas pelo nome)
+        all_options = list(created_attrs)
+        existing_names = {a['name'] for a in created_attrs}
+        
+        for proto in prototypes:
+            # Usa o 'type' ou 'symbol' como nome sugerido para o protótipo
+            name = proto['type']
+            if name not in existing_names:
+                all_options.append({'name': name, 'properties_type': [], 'textcolor': '#000000'})
+
+        # Passa a lista combinada para o diálogo
+        dialog = AttributeDialog(self, existing_attributes=all_options)
+        
         if dialog.exec():
             data = dialog.get_data()
             if data:

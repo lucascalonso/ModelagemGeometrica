@@ -1694,44 +1694,142 @@ class HeController:
         self.undoredo.end()
         self.update()
 
-    # Altere a assinatura do método para aceitar 'targets'
     def createAndApplyAttribute(self, name, value, data_type, color="#000000", targets=None):
         """
-        Cria (ou atualiza) um atributo dinâmico com alvos específicos.
+        Cria (ou atualiza) um atributo dinâmico e o aplica à seleção.
+        Suporta protótipos complexos e definição de alvos (targets).
         """
-        attr = self.attManager.getAttributeByName(name)
-        
-        val_type = ["string"]
-        if data_type == "Float": val_type = ["float"]
-        elif data_type == "Integer": val_type = ["int"]
-        elif data_type == "Vector (x,y)": val_type = ["float", "float"]
-
-        # Define padrão se targets não for passado (para compatibilidade)
+        # Define padrão se targets não for passado (segurança)
         if targets is None:
             targets = {"vertex": True, "edge": True, "face": True}
 
-        if attr is None:
-            attr = {
-                "type": name,          
-                "name": name,
-                "symbol": "None",      
-                "properties": { "Value": value },
-                "properties_type": val_type,
-                # AQUI ESTÁ O TRUQUE: Usamos o que veio do diálogo
-                "applyOnVertex": targets["vertex"], 
-                "applyOnEdge": targets["edge"],
-                "applyOnFace": targets["face"],
-                "textcolor": color 
-            }
-            self.attManager.attributes.append(attr)
-        else:
-            # Se já existe, atualizamos os valores e também ONDE ele aplica
-            attr['properties']['Value'] = value
-            attr['properties_type'] = val_type
-            attr['textcolor'] = color
-            attr['applyOnVertex'] = targets["vertex"]
-            attr['applyOnEdge'] = targets["edge"]
-            attr['applyOnFace'] = targets["face"]
+        # Tenta encontrar se já existe esse atributo instanciado no gerenciador
+        attr = self.attManager.getAttributeByName(name)
         
+        # Se não existe instância, verifica se existe um PROTÓTIPO com esse nome (ex: "Support")
+        prototype = None
+        if attr is None:
+            for proto in self.attManager.getPrototypes():
+                # Verifica flexível (pelo tipo ou pelo símbolo)
+                if name.lower() == proto['type'].lower() or name.lower() == proto['symbol'].lower():
+                    prototype = proto
+                    break
+
+        if attr is None:
+            if prototype:
+                # --- CASO 1: É um atributo complexo (ex: Support) ---
+                # Cria uma cópia profunda do protótipo para garantir a estrutura correta (Dx, Dy, etc)
+                import copy
+                attr = copy.deepcopy(prototype)
+                attr['name'] = name # Garante que o nome seja o que o usuário digitou
+                
+                # APLICAÇÃO DOS ALVOS (Checkboxes do Diálogo)
+                # Sobrescreve o padrão do protótipo com a escolha do usuário
+                attr['applyOnVertex'] = targets['vertex']
+                attr['applyOnEdge'] = targets['edge']
+                attr['applyOnFace'] = targets['face']
+                
+                # Salva a cor escolhida para referência futura
+                attr['textcolor'] = color
+                
+                # Adiciona à lista global
+                self.attManager.attributes.append(attr)
+                
+            else:
+                # --- CASO 2: É um atributo genérico simples (Escalar) ---
+                val_type = ["string"]
+                if data_type == "Float": val_type = ["float"]
+                elif data_type == "Integer": val_type = ["int"]
+                elif data_type == "Vector (x,y)": val_type = ["float", "float"]
+
+                attr = {
+                    "type": name,          
+                    "name": name,
+                    "symbol": "None",      
+                    "properties": { "Value": value },
+                    "properties_type": val_type,
+                    # Usa os targets passados
+                    "applyOnVertex": targets['vertex'], 
+                    "applyOnEdge": targets['edge'],
+                    "applyOnFace": targets['face'],
+                    "textcolor": color 
+                }
+                self.attManager.attributes.append(attr)
+        else:
+            # --- ATUALIZAÇÃO DE ATRIBUTO JÁ EXISTENTE ---
+            
+            # Se for um atributo genérico (com propriedade 'Value'), atualiza o valor
+            if 'Value' in attr['properties']:
+                attr['properties']['Value'] = value
+                
+                # Se for genérico mesmo (não protótipo complexo), atualiza o tipo também
+                if attr['symbol'] == "None":
+                    val_type = ["string"]
+                    if data_type == "Float": val_type = ["float"]
+                    elif data_type == "Integer": val_type = ["int"]
+                    elif data_type == "Vector (x,y)": val_type = ["float", "float"]
+                    attr['properties_type'] = val_type
+
+            # Atualiza configurações comuns para TODOS os tipos (Genérico ou Protótipo)
+            attr['textcolor'] = color
+            attr['applyOnVertex'] = targets['vertex']
+            attr['applyOnEdge'] = targets['edge']
+            attr['applyOnFace'] = targets['face']
+        
+        # Aplica o atributo (a função setAttribute já cuida da clonagem para as entidades)
         self.setAttribute(name)
         self.update()
+
+    def updateEntityAttributeValue(self, _entity, _attr_name, _new_value):
+        """Atualiza o valor de um atributo específico de uma única entidade."""
+        if not hasattr(_entity, 'attributes'):
+            return
+
+        # Procura o atributo na entidade
+        target_att = None
+        for att in _entity.attributes:
+            if att['name'] == _attr_name:
+                target_att = att
+                break
+        
+        if target_att:
+            # Tenta converter o valor para o tipo correto baseado no protótipo original
+            # (Simplificação: assume que 'Value' é o campo principal)
+            try:
+                # Detecta tipo atual para manter consistência (float, int, str)
+                current_val = target_att['properties']['Value']
+                if isinstance(current_val, float):
+                    val = float(_new_value)
+                elif isinstance(current_val, int):
+                    val = int(_new_value)
+                else:
+                    val = str(_new_value)
+                
+                # Atualiza
+                target_att['properties']['Value'] = val
+                self.isChanged = True
+                self.update() # Redesenha o canvas (caso mude tamanho de seta, etc)
+                return True
+            except ValueError:
+                print("Erro de conversão de tipo ao editar atributo.")
+                return False
+        return False
+
+    def removeAttributeFromEntity(self, _entity, _attr_name):
+        """Remove um atributo específico de uma única entidade."""
+        if not hasattr(_entity, 'attributes'):
+            return
+
+        target_att = None
+        for att in _entity.attributes:
+            if att['name'] == _attr_name:
+                target_att = att
+                break
+        
+        if target_att:
+            # Poderíamos adicionar UndoRedo aqui se quisesse ser rigoroso
+            unset = UnSetAttribute(_entity, target_att)
+            unset.execute()
+            # self.undoredo.insertOperation(unset) # Opcional: adicionar ao histórico
+            self.isChanged = True
+            self.update()

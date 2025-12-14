@@ -223,57 +223,54 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                     is_selected = p.isSelected()
                 
                 if is_selected:
-                    glColor3f(1.0, 0.0, 0.0) # Vermelho se selecionado
+                    glColor3f(1.0, 0.0, 0.0)
                 else:
-                    glColor3f(0.0, 0.0, 1.0) # Azul padrão
+                    glColor3f(0.0, 0.0, 1.0)
 
                 px = p.getX() if hasattr(p, 'getX') else p.x
                 py = p.getY() if hasattr(p, 'getY') else p.y
                 glVertex2f(px, py)
             glEnd()
 
-        # 5. Preview
+        # -----------------------------------------------------------
+        # 5. ATRIBUTOS (NOVO: Desenha símbolos como apoios e cargas)
+        # -----------------------------------------------------------
+        self.drawAttributes()
+        # -----------------------------------------------------------
+
+        # 6. Preview
         if self.polyAnchor:
             glColor3f(0.5, 0.5, 0.5)
             glLineWidth(1.0)
             glBegin(GL_LINES)
             glVertex2f(self.polyAnchor[0], self.polyAnchor[1])
-            
             curr = self.mousePos
             currW = self.convertRasterPtToWorldCoords(curr)
             cx, cy = currW.x(), currW.y()
-            
             cx, cy = self.snapToGridOrPoint(cx, cy)
-            
             glVertex2f(cx, cy)
             glEnd()
         
         if self.currentCurve:
             glColor3f(0.5, 0.5, 0.5)
             glLineWidth(1.0)
-            
-            # Pega posição atual do mouse com Snap
             curr = self.mousePos
             currW = self.convertRasterPtToWorldCoords(curr)
             cx, cy = currW.x(), currW.y()
             cx, cy = self.snapToGridOrPoint(cx, cy)
             mousePt = Point(cx, cy)
-            
-            # Gera o preview dinâmico
             preview_pts = self.currentCurve.getEquivPolylineCollecting(mousePt)
-            
             if preview_pts:
                 glBegin(GL_LINE_STRIP)
                 for p in preview_pts:
                     glVertex2f(p.getX(), p.getY())
                 glEnd()
         
-        # 6. Retângulo de Seleção
+        # 7. Retângulo de Seleção
         if self.isSelecting and self.curMouseAction == 'SELECTION':
             glEnable(GL_BLEND)
             pt0W = self.convertRasterPtToWorldCoords(self.pt0)
             currW = self.convertRasterPtToWorldCoords(self.mousePos)
-            
             xmin = min(pt0W.x(), currW.x())
             xmax = max(pt0W.x(), currW.x())
             ymin = min(pt0W.y(), currW.y())
@@ -281,20 +278,101 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
 
             glColor4f(0.0, 0.0, 1.0, 0.1)
             glBegin(GL_QUADS)
-            glVertex2f(xmin, ymin)
-            glVertex2f(xmax, ymin)
-            glVertex2f(xmax, ymax)
-            glVertex2f(xmin, ymax)
+            glVertex2f(xmin, ymin); glVertex2f(xmax, ymin)
+            glVertex2f(xmax, ymax); glVertex2f(xmin, ymax)
             glEnd()
 
             glColor3f(0.0, 0.0, 1.0)
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(xmin, ymin)
-            glVertex2f(xmax, ymin)
-            glVertex2f(xmax, ymax)
-            glVertex2f(xmin, ymax)
+            glVertex2f(xmin, ymin); glVertex2f(xmax, ymin)
+            glVertex2f(xmax, ymax); glVertex2f(xmin, ymax)
             glEnd()
+
+    # -----------------------------------------------------------
+    # MÉTODO NOVO PARA DESENHAR ATRIBUTOS
+    # -----------------------------------------------------------
+    def drawAttributes(self):
+        # Calcula uma escala para os símbolos baseada no tamanho da tela visível
+        world_width = abs(self.right - self.left)
+        scale = world_width * 0.02  # Símbolos ocupam 2% da tela
+
+        # 1. Atributos de Ponto
+        points = self._get_points_safe()
+        if points:
+            for p in points:
+                if hasattr(p, 'attributes'):
+                    for att in p.attributes:
+                        if att.get('symbol') and att['symbol'] != "None":
+                            symbol_data = self.he_ctrl.getAttributeSymbol(att, scale, _pt=p)
+                            self._render_symbol(symbol_data)
+
+        # 2. Atributos de Segmento
+        segments = self._get_segments_safe()
+        if segments:
+            for seg in segments:
+                if hasattr(seg, 'attributes'):
+                    for att in seg.attributes:
+                        if att.get('symbol') and att['symbol'] != "None":
+                            symbol_data = self.he_ctrl.getAttributeSymbol(att, scale, _seg=seg)
+                            self._render_symbol(symbol_data)
+
+    def _render_symbol(self, symbol_data):
+        if not symbol_data: return
+
+        # Configura cor se disponível
+        if 'colors' in symbol_data and symbol_data['colors']:
+            # Pega a primeira cor (formato esperado [r, g, b] normalizado ou não)
+            c = symbol_data['colors'][0]
+            if len(c) >= 3:
+                # Se for 0-255 ou 0-1, OpenGL espera float. Vamos assumir que o HETool salva RGB.
+                # Se o JSON tiver 0 ou 1, funciona.
+                glColor3f(c[0], c[1], c[2])
+        else:
+            glColor3f(0.0, 0.0, 0.0) # Preto default
+
+        glLineWidth(2.0)
+
+        # Desenha Linhas
+        if 'lines' in symbol_data:
+            for line in symbol_data['lines']:
+                glBegin(GL_LINES)
+                for p in line:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # Desenha Triângulos
+        if 'triangles' in symbol_data:
+            for tri in symbol_data['triangles']:
+                glBegin(GL_TRIANGLES)
+                for p in tri:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # Desenha Quadrados (Quads)
+        if 'squares' in symbol_data:
+            for sq in symbol_data['squares']:
+                glBegin(GL_QUADS)
+                for p in sq:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # Desenha Círculos (Line Loops)
+        if 'circles' in symbol_data:
+            for circ in symbol_data['circles']:
+                glBegin(GL_LINE_LOOP)
+                for p in circ:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+                
+        # Desenha Pontos
+        if 'points' in symbol_data:
+            glPointSize(5.0)
+            glBegin(GL_POINTS)
+            for p in symbol_data['points']:
+                glVertex2f(p.getX(), p.getY())
+            glEnd()
+    # -----------------------------------------------------------
 
     def drawGrid(self):
         gridX, gridY = self.grid.getGridSpace()
@@ -351,42 +429,26 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         return snapped, sx, sy
     
     def snapToGridOrPoint(self, x, y):
-        # Atualiza tolerância baseada no zoom atual
         maxSize = max(abs(self.right - self.left), abs(self.top - self.bottom))
         tol = maxSize * self.pickTolFac
-        
-        # 1. Snap aos pontos existentes (prioridade)
         snapped, sx, sy = self.snapToPoint(x, y, tol)
         if snapped: return sx, sy
-        
-        # 2. Snap ao Grid (se habilitado)
         if self.grid and self.grid.getSnapInfo():
             sx, sy = self.grid.snapTo(x, y)
             return sx, sy
-            
         return x, y
 
     def keyPressEvent(self, event):
-        # Ctrl + Z = Undo
         if event.key() == QtCore.Qt.Key_Z and (event.modifiers() & QtCore.Qt.ControlModifier):
-            # Ctrl + Shift + Z = Redo
             if event.modifiers() & QtCore.Qt.ShiftModifier:
                 self.he_ctrl.redo()
-                print("Redo executed")
             else:
                 self.he_ctrl.undo()
-                print("Undo executed")
             self.update()
-        
-        # Ctrl + Y = Redo
         elif event.key() == QtCore.Qt.Key_Y and (event.modifiers() & QtCore.Qt.ControlModifier):
             self.he_ctrl.redo()
-            print("Redo executed")
             self.update()
-
-        # Delete ou Backspace = Deletar Seleção
         elif event.key() == QtCore.Qt.Key_Delete or event.key() == QtCore.Qt.Key_Backspace:
-            
             if self.he_view:
                 selected_points = self.he_view.getSelectedPoints()
                 for pt in selected_points:
@@ -394,12 +456,9 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                     if incident_segments:
                         for seg in incident_segments:
                             seg.setSelected(True)
-
             self.he_ctrl.delSelectedEntities()
-            print("Delete executed")
             self.update()
             self.repaint()
-            
         else:
             super().keyPressEvent(event)
 
@@ -424,16 +483,13 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         
         if self.curMouseAction == 'COLLECTION' and self.curveType in ['QUADBEZIER', 'CUBICBEZIER', 'CIRCLE', 'CIRCLEARC']:
             if self.currentCurve is None:
-                # Factory: Cria a instância correta
                 if self.curveType == 'QUADBEZIER': self.currentCurve = QuadBezier()
                 elif self.curveType == 'CUBICBEZIER': self.currentCurve = CubicBezier()
                 elif self.curveType == 'CIRCLE': self.currentCurve = Circle()
                 elif self.curveType == 'CIRCLEARC': self.currentCurve = CircleArc()
             
-            # Adiciona o ponto clicado
             self.currentCurve.addCtrlPoint(xw, yw)
             
-            # Verifica se a curva está completa
             is_done = False
             if self.curveType == 'QUADBEZIER' and self.currentCurve.nPts == 3: is_done = True
             elif self.curveType == 'CUBICBEZIER' and self.currentCurve.nPts == 4: is_done = True
@@ -441,23 +497,17 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
             elif self.curveType == 'CIRCLEARC' and self.currentCurve.nPts == 3: is_done = True
             
             if is_done:
-                # Discretiza a curva em segmentos de linha
                 poly_pts = self.currentCurve.getEquivPolyline()
-                
-                # Insere os segmentos no HETool
                 if len(poly_pts) >= 2:
                     for i in range(len(poly_pts) - 1):
                         p1 = poly_pts[i]
                         p2 = poly_pts[i+1]
-                        
                         dx = p2.getX() - p1.getX()
                         dy = p2.getY() - p1.getY()
                         dist = math.sqrt(dx*dx + dy*dy)
                         if dist > 1e-10:
                             self.he_ctrl.insertSegment([p1.getX(), p1.getY(), p2.getX(), p2.getY()], self.pickTol)
-                
-                self.currentCurve = None # Reseta para a próxima
-            
+                self.currentCurve = None 
             self.update()
             return
 
@@ -489,37 +539,29 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
 
     def mouseMoveEvent(self, event):
         self.mousePos = event.pos()
-        
         if self.isSelecting:
             self.update()
             return
-
         if self.panActive:
             dx = event.x() - self.lastPanPos.x()
             dy = event.y() - self.lastPanPos.y()
-            
             worldWidth = self.right - self.left
             worldHeight = self.top - self.bottom
-            
             scaleX = worldWidth / self.width if self.width > 0 else 1.0
             scaleY = worldHeight / self.height if self.height > 0 else 1.0
-            
             if self.width <= self.height:
                 aspect = float(self.height) / float(self.width) if self.width > 0 else 1.0
                 scaleY = (self.top - self.bottom) * aspect / self.height
             else:
                 aspect = float(self.width) / float(self.height) if self.height > 0 else 1.0
                 scaleX = (self.right - self.left) * aspect / self.width
-
             self.left -= dx * scaleX
             self.right -= dx * scaleX
             self.bottom += dy * scaleY
             self.top += dy * scaleY
-
             self.lastPanPos = event.pos()
             self.update()
             return
-        
         if self.polyAnchor: self.update()
         if self.currentCurve: self.update()
     
@@ -527,31 +569,22 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
         if event.button() == QtCore.Qt.MiddleButton:
             self.panActive = False
             self.setCursor(QtCore.Qt.ArrowCursor)
-            
         if self.isSelecting and event.button() == QtCore.Qt.LeftButton:
             self.isSelecting = False
-            
             diff = event.pos() - self.pt0
             dist = diff.manhattanLength()
-            
             shift = (event.modifiers() & QtCore.Qt.ShiftModifier) == QtCore.Qt.ShiftModifier
-            
             if dist <= self.mouseMoveTol:
-                
                 ptW = self.convertRasterPtToWorldCoords(event.pos())
                 self.he_ctrl.selectPick(ptW.x(), ptW.y(), self.pickTol, shift)
             else:
-                
                 pt0W = self.convertRasterPtToWorldCoords(self.pt0)
                 pt1W = self.convertRasterPtToWorldCoords(event.pos())
-                
                 xmin = min(pt0W.x(), pt1W.x())
                 xmax = max(pt0W.x(), pt1W.x())
                 ymin = min(pt0W.y(), pt1W.y())
                 ymax = max(pt0W.y(), pt1W.y())
-                
                 self.he_ctrl.selectFence(xmin, xmax, ymin, ymax, shift)
-            
             self.update()
             self.selectionChanged.emit()
 
@@ -654,28 +687,18 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     
     def drawPatchWithTess(self, points):
         if not points or len(points) < 3: return
-
         try:
-            # Cria objeto tessellator
             tess = gluNewTess()
-            
-            # Define callbacks para o OpenGL desenhar os triângulos gerados
             gluTessCallback(tess, GLU_TESS_BEGIN, glBegin)
             gluTessCallback(tess, GLU_TESS_VERTEX, glVertex3dv)
             gluTessCallback(tess, GLU_TESS_END, glEnd)
-            
-            # Inicia definição do polígono
             gluTessBeginPolygon(tess, None)
             gluTessBeginContour(tess)
-            
             for p in points:
-                # Garante coordenadas numéricas
                 x = p.getX() if hasattr(p, 'getX') else p.x
                 y = p.getY() if hasattr(p, 'getY') else p.y
-                # Z=0 para 2D. O tessellator precisa de 3 coordenadas.
                 v = [float(x), float(y), 0.0]
                 gluTessVertex(tess, v, v)
-                
             gluTessEndContour(tess)
             gluTessEndPolygon(tess)
             gluDeleteTess(tess)
@@ -685,18 +708,12 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     def drawMesh(self, mesh):
         if not mesh: return
         pts, conn = mesh
-        
-        # Configura cor para as linhas da malha (Cinza Escuro/Preto)
         glColor3f(0.2, 0.2, 0.2) 
         glLineWidth(1.0)
-        
-        # Desenha cada triângulo da malha como um loop de linhas (Wireframe)
         for tri in conn:
-            # tri é uma lista de índices [i, j, k]
             p0 = pts[tri[0]]
             p1 = pts[tri[1]]
             p2 = pts[tri[2]]
-            
             glBegin(GL_LINE_LOOP)
             glVertex2f(p0.getX(), p0.getY())
             glVertex2f(p1.getX(), p1.getY())
