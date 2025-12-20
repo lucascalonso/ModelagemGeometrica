@@ -533,9 +533,9 @@ class AppController(QMainWindow, Ui_MyApp):
         if dialog.exec():
             data = dialog.get_data()
             if data:
-                name, value, dtype, color, targets = data
+                name, value, dtype, color, targets, symbol = data
                 
-                he_ctrl.createAndApplyAttribute(name, value, dtype, color, targets)
+                he_ctrl.createAndApplyAttribute(name, value, dtype, color, targets, symbol)
                 
                 self.popupMessage(f"Attribute '{name}' applied successfully.")
                 self.update_attribute_panel()

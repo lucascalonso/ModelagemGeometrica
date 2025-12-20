@@ -7,7 +7,7 @@ class Ui_MyApp(object):
         if not MainWindow.objectName():
             MainWindow.setObjectName("MainWindow")
         MainWindow.resize(900, 600)
-        MainWindow.setWindowTitle("Trabalho 5 - Lucas Alonso Correia")
+        MainWindow.setWindowTitle("Trabalho Final - Gabriel Paes / Lucas Correia")
 
         # Central widget para o canvas
         self.canvas = QWidget(MainWindow)
@@ -16,7 +16,7 @@ class Ui_MyApp(object):
 
         # --- Criação do Menu Bar (NOVO) ---
         self.menubar = MainWindow.menuBar()
-        self.menuFile = self.menubar.addMenu("Arquivo")
+        self.menuFile = self.menubar.addMenu("File")
 
         # --- Criação das Toolbars ---
         # Toolbar de Controle de Visualização
@@ -28,7 +28,7 @@ class Ui_MyApp(object):
         MainWindow.addToolBar(modelToolbar)
 
         # --- Ações de Arquivo (NOVO) ---
-        self.actionOpen = QAction("Abrir", MainWindow)
+        self.actionOpen = QAction("Open", MainWindow)
         self.menuFile.addAction(self.actionOpen)
 
         self.actionSave = QAction("Salvar", MainWindow)

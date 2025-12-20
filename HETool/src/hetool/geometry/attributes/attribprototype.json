@@ -61,7 +61,7 @@
             "symbol": "Support",
             "name": "untitled",
             "properties": {
-                "Dx": false,
+                "Dx": true,
                 "Dx pos": {
                     "list": [
                         "Left",

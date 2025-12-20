@@ -293,12 +293,46 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
     # MÉTODO NOVO PARA DESENHAR ATRIBUTOS
     # -----------------------------------------------------------
     def drawAttributes(self):
-        # Calcula uma escala para os símbolos baseada no tamanho da tela visível
-        world_width = abs(self.right - self.left)
-        scale = world_width * 0.02  # Símbolos ocupam 2% da tela
-
-        # 1. Atributos de Ponto
+        # 1. Calcula escala baseada no tamanho do MODELO (para zoom funcionar)
+        # Se usarmos (self.right - self.left), o tamanho visual fica fixo na tela.
+        # Usando o BBox do modelo, o tamanho visual acompanha o zoom.
+        
         points = self._get_points_safe()
+        scale = 1.0
+        
+        if points:
+            min_x = min_y = float('inf')
+            max_x = max_y = float('-inf')
+            
+            # Otimização: Se tiver muitos pontos, faz amostragem para não travar o render
+            step = 1
+            if len(points) > 2000:
+                step = int(len(points) / 1000)
+            
+            has_valid_points = False
+            for i in range(0, len(points), step):
+                p = points[i]
+                px = p.getX(); py = p.getY()
+                if px < min_x: min_x = px
+                if px > max_x: max_x = px
+                if py < min_y: min_y = py
+                if py > max_y: max_y = py
+                has_valid_points = True
+            
+            if has_valid_points and min_x != float('inf'):
+                w = max_x - min_x
+                h = max_y - min_y
+                diag = (w*w + h*h)**0.5
+                if diag > 0:
+                    scale = diag * 0.03 # Símbolos serão 3% da diagonal do modelo
+        
+        # Fallback: Se modelo vazio, usa tamanho da tela para não sumir
+        if scale == 1.0 and (not points):
+             world_width = abs(self.right - self.left)
+             if world_width > 0:
+                 scale = world_width * 0.05
+
+        # 2. Atributos de Ponto
         if points:
             for p in points:
                 if hasattr(p, 'attributes'):
@@ -307,7 +341,7 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                             symbol_data = self.he_ctrl.getAttributeSymbol(att, scale, _pt=p)
                             self._render_symbol(symbol_data)
 
-        # 2. Atributos de Segmento
+        # 3. Atributos de Segmento
         segments = self._get_segments_safe()
         if segments:
             for seg in segments:
@@ -317,55 +351,117 @@ class GLCanvas(QtOpenGLWidgets.QOpenGLWidget):
                             symbol_data = self.he_ctrl.getAttributeSymbol(att, scale, _seg=seg)
                             self._render_symbol(symbol_data)
 
+        # 4. Atributos de Face (Patch)
+        patches = self._get_patches_safe()
+        if patches:
+            for patch in patches:
+                if hasattr(patch, 'attributes'):
+                    for att in patch.attributes:
+                        if att.get('symbol') and att['symbol'] != "None":
+                            symbol_data = self.he_ctrl.getAttributeSymbol(att, scale, _patch=patch)
+                            self._render_symbol(symbol_data)
+
     def _render_symbol(self, symbol_data):
         if not symbol_data: return
 
         # Configura cor se disponível
         if 'colors' in symbol_data and symbol_data['colors']:
-            # Pega a primeira cor (formato esperado [r, g, b] normalizado ou não)
+            # Pega a primeira cor
             c = symbol_data['colors'][0]
             if len(c) >= 3:
-                # Se for 0-255 ou 0-1, OpenGL espera float. Vamos assumir que o HETool salva RGB.
-                # Se o JSON tiver 0 ou 1, funciona.
                 glColor3f(c[0], c[1], c[2])
         else:
             glColor3f(0.0, 0.0, 0.0) # Preto default
 
         glLineWidth(2.0)
 
-        # Desenha Linhas
+        # 1. Desenha Linhas (GL_LINE_STRIP para conectar os pontos em sequência)
         if 'lines' in symbol_data:
             for line in symbol_data['lines']:
-                glBegin(GL_LINES)
+                glBegin(GL_LINE_STRIP)
                 for p in line:
                     glVertex2f(p.getX(), p.getY())
                 glEnd()
 
-        # Desenha Triângulos
-        if 'triangles' in symbol_data:
-            for tri in symbol_data['triangles']:
-                glBegin(GL_TRIANGLES)
-                for p in tri:
-                    glVertex2f(p.getX(), p.getY())
-                glEnd()
-
-        # Desenha Quadrados (Quads)
-        if 'squares' in symbol_data:
-            for sq in symbol_data['squares']:
-                glBegin(GL_QUADS)
-                for p in sq:
-                    glVertex2f(p.getX(), p.getY())
-                glEnd()
-
-        # Desenha Círculos (Line Loops)
+        # 2. Desenha Círculos (GL_LINE_LOOP para fechar o contorno)
         if 'circles' in symbol_data:
             for circ in symbol_data['circles']:
                 glBegin(GL_LINE_LOOP)
                 for p in circ:
                     glVertex2f(p.getX(), p.getY())
                 glEnd()
+
+        # 3. Desenha Triângulos (GL_POLYGON para preencher a região)
+        if 'triangles' in symbol_data:
+            for tri in symbol_data['triangles']:
+                glBegin(GL_POLYGON)
+                for p in tri:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # 4. Desenha Quadrados (GL_POLYGON para preencher a região)
+        if 'squares' in symbol_data:
+            for sq in symbol_data['squares']:
+                glBegin(GL_POLYGON)
+                for p in sq:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
                 
-        # Desenha Pontos
+        # 5. Desenha Pontos Isolados
+        if 'points' in symbol_data:
+            glPointSize(5.0)
+            glBegin(GL_POINTS)
+            for p in symbol_data['points']:
+                glVertex2f(p.getX(), p.getY())
+            glEnd()
+
+    def _render_symbol(self, symbol_data):
+        if not symbol_data: return
+
+        # Configura cor se disponível
+        if 'colors' in symbol_data and symbol_data['colors']:
+            # Pega a primeira cor
+            c = symbol_data['colors'][0]
+            if len(c) >= 3:
+                glColor3f(c[0], c[1], c[2])
+        else:
+            glColor3f(0.0, 0.0, 0.0) # Preto default
+
+        glLineWidth(2.0)
+
+        # 1. Desenha Linhas (GL_LINE_STRIP para conectar os pontos em sequência)
+        if 'lines' in symbol_data:
+            for line in symbol_data['lines']:
+                glBegin(GL_LINE_STRIP)
+                for p in line:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # 2. Desenha Círculos (GL_LINE_LOOP para fechar o contorno)
+        if 'circles' in symbol_data:
+            for circ in symbol_data['circles']:
+                glBegin(GL_LINE_LOOP)
+                for p in circ:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # 3. Desenha Triângulos (GL_POLYGON para preencher a região)
+        if 'triangles' in symbol_data:
+            for tri in symbol_data['triangles']:
+                glBegin(GL_POLYGON)
+                for p in tri:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+
+        # 4. Desenha Quadrados (GL_POLYGON para preencher a região)
+        if 'squares' in symbol_data:
+            for sq in symbol_data['squares']:
+                glBegin(GL_POLYGON)
+                for p in sq:
+                    glVertex2f(p.getX(), p.getY())
+                glEnd()
+                
+        # 5. Desenha Pontos Isolados
         if 'points' in symbol_data:
             glPointSize(5.0)
             glBegin(GL_POINTS)

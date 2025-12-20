@@ -33,6 +33,12 @@ class AttributeDialog(QDialog):
         self.typeCombo.addItems(["String", "Float", "Integer", "Vector (x,y)"])
         layout.addWidget(self.typeCombo)
         
+        # Seleção de Símbolo
+        layout.addWidget(QLabel("Visual Symbol:"))
+        self.symbolCombo = QComboBox()
+        self.symbolCombo.addItems(["None", "Square", "Circle", "Triangle", "Arrow", "Support"])
+        layout.addWidget(self.symbolCombo)
+
         # Value
         layout.addWidget(QLabel("Value:"))
         self.valueEdit = QLineEdit()
@@ -105,37 +111,50 @@ class AttributeDialog(QDialog):
         attr = next((a for a in self.existing_attributes if a['name'] == name), None)
         
         if attr:
-            # 1. Preenche Tipo
-            ptypes = attr.get('properties_type', [])
-            dtype = "String"
-            if "float" in ptypes:
-                if len(ptypes) >= 2 and ptypes[0]=="float" and ptypes[1]=="float":
-                    dtype = "Vector (x,y)"
-                else:
-                    dtype = "Float"
-            elif "int" in ptypes:
-                dtype = "Integer"
-            
-            idx = self.typeCombo.findText(dtype)
-            if idx >= 0: self.typeCombo.setCurrentIndex(idx)
-            
-            # 2. Preenche Valor (Último usado)
+            # 1. Preenche Valor
             if 'properties' in attr and 'Value' in attr['properties']:
-                val = attr['properties']['Value']
-                if isinstance(val, list):
-                    self.valueEdit.setText(f"{val[0]}, {val[1]}")
-                else:
-                    self.valueEdit.setText(str(val))
+                self.valueEdit.setText(str(attr['properties']['Value']))
             
-            # 3. Preenche Cor
-            if 'textcolor' in attr:
-                self.selected_color = attr['textcolor']
-                self.lblColorPreview.setStyleSheet(f"color: {self.selected_color}; font-size: 20px;")
+            # 2. Preenche Tipo de Dado (CORREÇÃO AQUI)
+            if 'properties_type' in attr and len(attr['properties_type']) > 0:
+                ptype = attr['properties_type'][0] # Pega o primeiro tipo (geralmente o do Value)
+                
+                # Mapeia os tipos internos para os nomes do ComboBox
+                combo_text = "String" # Default
+                if ptype == "float":
+                    combo_text = "Float"
+                elif ptype == "int":
+                    combo_text = "Integer"
+                elif ptype == "vector": # Se houver suporte a vetor
+                    combo_text = "Vector (x,y)"
+                
+                idx = self.typeCombo.findText(combo_text)
+                if idx >= 0:
+                    self.typeCombo.setCurrentIndex(idx)
+
+            # 3. Preenche Símbolo (Visual Symbol)
+            if 'symbol' in attr:
+                idx = self.symbolCombo.findText(attr['symbol'])
+                if idx >= 0:
+                    self.symbolCombo.setCurrentIndex(idx)
             
-            # 4. Preenche Targets
+            # 4. Preenche Cor
+            # A cor é salva como lista [r, g, b] (0.0 a 1.0) dentro de properties['Color']
+            if 'properties' in attr and 'Color' in attr['properties']:
+                c = attr['properties']['Color']
+                if isinstance(c, list) and len(c) >= 3:
+                    # Converte RGB (0-1) de volta para Hex (#RRGGBB)
+                    r, g, b = int(c[0]*255), int(c[1]*255), int(c[2]*255)
+                    hex_color = f"#{r:02x}{g:02x}{b:02x}"
+                    
+                    self.selected_color = hex_color
+                    self.lblColorPreview.setStyleSheet(f"color: {self.selected_color}; font-size: 20px;")
+            
+            # 5. Preenche Targets (Checkboxes)
             self.chkVertex.setChecked(attr.get('applyOnVertex', True))
             self.chkEdge.setChecked(attr.get('applyOnEdge', True))
             self.chkFace.setChecked(attr.get('applyOnFace', True))
+
         else:
             # Se é um nome novo, não limpa tudo para não irritar o usuário,
             # mas garante que os campos estejam habilitados.
@@ -151,7 +170,8 @@ class AttributeDialog(QDialog):
         name = self.nameCombo.currentText().strip()
         dtype = self.typeCombo.currentText()
         raw_value = self.valueEdit.text().strip()
-        
+        symbol = self.symbolCombo.currentText() 
+
         if not name:
             return None
             
@@ -160,13 +180,19 @@ class AttributeDialog(QDialog):
                 value = float(raw_value)
             elif dtype == "Integer":
                 value = int(raw_value)
-            elif dtype == "Vector":
-                parts = raw_value.split(',')
-                if len(parts) != 2: raise ValueError
-                value = [float(parts[0]), float(parts[1])]
+            elif dtype == "Vector (x,y)":
+                # Remove parênteses se houver e divide por vírgula
+                clean_val = raw_value.replace('(', '').replace(')', '')
+                parts = clean_val.split(',')
+                if len(parts) >= 2:
+                    value = [float(parts[0]), float(parts[1])]
+                else:
+                    # Fallback se o usuário digitar apenas um número
+                    value = [float(parts[0]), 0.0]
             else:
-                value = raw_value
+                value = raw_value # String
         except ValueError:
+            # Se falhar a conversão, retorna None para não criar atributo inválido
             return None
             
         targets = {
@@ -175,4 +201,6 @@ class AttributeDialog(QDialog):
             "face": self.chkFace.isChecked()
         }
             
-        return name, value, dtype, self.selected_color, targets
+        return name, value, dtype, self.selected_color, targets, symbol
+
+    

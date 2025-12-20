@@ -1,0 +1,91 @@
+\documentclass[12pt,a4paper]{article}
+
+% --- Pacotes Básicos ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+% --- Configuração de Margens ---
+\geometry{left=3cm, top=3cm, right=2cm, bottom=2cm}
+
+% --- Informações do Título ---
+\title{Relatório Técnico: Implementação do Sistema de Gerenciamento de Atributos em Modelagem Geométrica}
+\author{
+  Gabriel Paes Gomes \\ 
+  \texttt{gabriel\_pg@id.uff.br} \\[0.3cm]
+  Lucas Alonso Correia de Oliveira \\ 
+  \texttt{lcorreia@id.uff.br} \\[0.3cm]
+    \large Universidade Federal Fluminense - UFF \\
+  \normalsize Modelagem Geométrica - TCC00242 \\
+  \normalsize Professor: Dr. André Maues Brabo Pereira
+}
+\date{14 de Dezembro de 2025}
+
+\begin{document}
+
+\maketitle
+\section{Introdução}
+Este relatório descreve a implementação e a evolução do Modelador Geométrico desenvolvido ao longo da disciplina para suporte de Gerenciamento de Atributos. O objetivo deste módulo é permitir a associação de dados semânticos e físicos (como condições de contorno, materiais, cargas e propriedades definidas pelo usuário) às entidades topológicas (Vértices, Arestas e Faces) de um modelo Half-Edge. O sistema foi desenvolvido sobre a biblioteca HETool, utilizando Python e PySide6 para a interface gráfica, e OpenGL para a visualização.
+
+\section{Arquitetura do Sistema}
+O sistema de atributos segue o padrão MVC (Model-View-Controller) já estabelecido na aplicação, garantindo desacoplamento entre a lógica de dados, o gerenciamento e a visualização.
+
+\subsection{Estrutura de Dados (AttribManager)}
+A classe \texttt{AttribManager} atua como o repositório central das definições de atributos. Ela gerencia duas listas principais:
+\begin{itemize}
+    \item \textbf{Protótipos:} Modelos pré-definidos de atributos complexos (ex: "Support Conditions", "Uniform Load") carregados de um arquivo JSON (\textit{attribprototype.json}). Isso permite a padronização de atributos comuns em engenharia.
+    \item \textbf{Atributos Criados:} Uma lista dos atributos instanciados pelo usuário durante a sessão.
+\end{itemize}
+A validação dos dados é feita utilizando a biblioteca \texttt{jsonschema}, garantindo que a estrutura dos atributos esteja correta antes da criação.
+\subsection{Controle e Lógica (HeController)}
+O controlador (\texttt{HeController}) é o núcleo da lógica de aplicação. As principais funcionalidades incluem:
+\begin{itemize}
+    \item \textbf{Criação Dinâmica:} O método \texttt{createAndApplyAttribute} gerencia tanto a criação de atributos escalares simples quanto a instanciação de protótipos complexos baseados no nome.
+    \item \textbf{Aplicação Direcionada (Targeting):} Implementação de lógica para filtrar a aplicação do atributo baseada no tipo de entidade selecionada (Vertex, Edge ou Face/Patch).
+    \item \textbf{Padrão Command:} Todas as operações de atribuição utilizam o padrão Command (\texttt{SetAttribute}, \texttt{UnSetAttribute}) através da classe \texttt{UndoRedo}, permitindo desfazer e refazer ações.
+\end{itemize}
+
+\section{Desafios de Implementação e Soluções}
+Durante o desenvolvimento, identificamos e resolvemos problemas críticos relacionados à persistência e independência dos dados.
+
+\subsection{Integração com a HETool: Refatoração vs. Adapter}
+Um dos desafios significativos foi a integração do modelador com a biblioteca \texttt{hetools}. Inicialmente, tentamos uma abordagem utilizando o padrão \textbf{Adapter} para isolar as dependências, mas devido à necessidade de uma comunicação mais direta com as estruturas topológicas, decidimos pela \textbf{refatoração} completa da integração, garantindo maior fluidez e performance ao sistema.
+
+\subsection{Independência de Instâncias (Deep Copy)}
+O problema identificado foi que, ao aplicar um atributo a múltiplas entidades, o sistema passava uma referência ao objeto, fazendo com que a alteração do valor em uma entidade afetasse todas as outras. 
+\textbf{Solução:} Implementamos o uso de \texttt{copy.deepcopy()} no método \texttt{setAttribute} do controlador. Agora, o sistema cria um clone independente dos dados para cada entidade alvo, garantindo valores isolados.
+
+\subsection{Persistência de Dados (HeFile)}
+Originalmente, o sistema armazenava apenas o nome do atributo, perdendo customizações individuais ao recarregar o arquivo. 
+\textbf{Solução:} Reescrevemos os métodos \texttt{saveFile} e \texttt{loadFile} na classe \texttt{HeFile}. Agora, o sistema serializa o dicionário completo de atributos (\texttt{entity\_attributes}) dentro da estrutura JSON de cada Vértice, Aresta e Face, assegurando a restauração correta de valores específicos.
+\newpage
+\section{Interface do Usuário}
+A interface desenvolvida ao longo da disciplina foi projetada de forma bem integrada e intuitiva, facilitando a interação do usuário com o sistema de atributos.
+
+\subsection{Diálogo de Criação (AttributeDialog)}
+O diálogo suporta seleção híbrida (QComboBox editável) para reutilização ou criação, filtragem de entidades por checkboxes (Vertex, Edge, Face) e um seletor de cores integrado.
+
+\subsection{Visualizador e Editor (AttributeViewer)}
+Implementamos um \texttt{QDockWidget} lateral interativo que lista os atributos das entidades selecionadas em uma árvore (\texttt{QTreeWidget}). O usuário pode realizar edições \textit{in-place} clicando duas vezes no valor, e utilizar o menu de contexto para remover atributos.
+
+\section{Visualização Gráfica (OpenGL)}
+A renderização dos atributos no Canvas fornece feedback visual imediato. A classe \texttt{AttribSymbols} gera primitivas geométricas (triângulos para "Support", setas para "Loads") baseadas no tipo de atributo. O método \texttt{drawAttributes} no GLCanvas percorre as entidades e desenha os símbolos com escala ajustada automaticamente ao zoom.
+
+\section{Próximos Passos}
+Para as futuras iterações do sistema, planejamos expandir as formas de visualização de atributos, permitindo que o usuário defina como o modelador deve representar os dados na malha. Os principais focos serão:
+\begin{itemize}
+    \item \textbf{Heatmaps:} Representação de atributos escalares através de gradientes de cor.
+    \item \textbf{Texturas Procedurais:} Visualização de propriedades como porosidade através de texturas aplicadas às faces.
+    \item \textbf{Customização de Simbologia:} Interface para o usuário definir as regras de representação visual de novos tipos de atributos.
+\end{itemize}
+
+\section{Conclusão}
+O sistema de gerenciamento de atributos implementado oferece uma solução robusta e flexível para a definição de propriedades em modelos geométricos. As modificações realizadas garantiram a integridade dos dados, permitiram a persistência completa e melhoraram a experiência do usuário através de uma interface interativa.
+
+\end{document}

@@ -25,24 +25,85 @@ class AttribSymbols:
                 lines, triangles, squares, circles = AttribSymbols.supportSegment(
                     _attribute, _seg, _scale)
 
-        elif _attribute['symbol'] == 'Arrow':
 
-            if _attribute['type'] == "Concentrated Load":
-                time = "after"
-                if _pt is not None:
-                    lines, triangles, circles = AttribSymbols.arrowPointCL(
-                        _attribute, _pt, _scale)
+        elif _attribute.get('symbol') == 'Square':
+            if _pt is not None:
+                # Gera um quadrado centrado no ponto
+                sq = AttribSymbols.squareSymbol(_pt, _scale, 0)
+                squares.append(sq)
+            elif _seg is not None:
+                # Desenha no meio da aresta
+                mid = _seg.getPoint(0.5)
+                sq = AttribSymbols.squareSymbol(mid, _scale, 0)
+                squares.append(sq)
 
-            elif _attribute['type'] == "Uniform Load":
-                time = "after"
-                if _seg is not None:
-                    lines, triangles = AttribSymbols.arrowSegmentUL(
-                        _attribute, _seg, _scale)
+        elif _attribute.get('symbol') == 'Triangle':
+            if _pt is not None:
+                # Gera um triângulo centrado no ponto
+                tr = AttribSymbols.triangleSymbol(_pt, _scale, 0)
+                triangles.append(tr)
+            elif _seg is not None:
+                # Desenha no meio da aresta
+                mid = _seg.getPoint(0.5)
+                tr = AttribSymbols.triangleSymbol(mid, _scale, 0)
+                triangles.append(tr)
 
-        elif _attribute['symbol'] == 'Nsbdvs':
-            time = "after"
-            if _seg is not None:
-                points = AttribSymbols.Nsbdvs(_attribute, _seg)
+        elif _attribute.get('symbol') == 'Circle':
+            if _pt is not None:
+                # Gera um círculo centrado no ponto
+                cr = AttribSymbols.circleSymbol(_pt, _scale)
+                circles.append(cr)
+            elif _seg is not None:
+                mid = _seg.getPoint(0.5)
+                cr = AttribSymbols.circleSymbol(mid, _scale)
+                circles.append(cr)
+        
+        elif _attribute.get('symbol') == 'Arrow':
+            import math
+            angle = 90.0 # Default (Aponta para cima se vx=0, vy=0)
+            
+            # 1. Extração Robusta do Valor (Lista, Tupla, String ou Float)
+            val = None
+            if 'properties' in _attribute and 'Value' in _attribute['properties']:
+                val = _attribute['properties']['Value']
+            elif 'value' in _attribute:
+                val = _attribute['value']
+
+            if val is not None:
+                vx, vy = 0.0, 0.0
+                
+                if isinstance(val, (list, tuple)):
+                    if len(val) >= 2: vx, vy = float(val[0]), float(val[1])
+                    elif len(val) == 1: vy = float(val[0])
+                elif isinstance(val, str):
+                    try:
+                        clean = val.replace('(', '').replace(')', '').replace('[', '').replace(']', '')
+                        parts = clean.split(',')
+                        if len(parts) >= 2: vx, vy = float(parts[0]), float(parts[1])
+                        else: vy = float(clean)
+                    except: pass
+                elif isinstance(val, (int, float)):
+                    vy = float(val)
+
+                # 2. Cálculo do Ângulo
+                if vx != 0 or vy != 0:
+                    # math.atan2(y, x) retorna o ângulo em radianos a partir do eixo X+
+                    # math.degrees converte para graus.
+                    angle = math.degrees(math.atan2(vy, vx))
+                    
+                    # DICA: Se as setas estiverem rotacionadas 90 graus erradas, 
+                    # descomente a linha abaixo (depende se a seta base aponta para Cima ou Direita):
+                    # angle -= 90 
+
+            if _pt is not None:
+                l, tr = AttribSymbols.arrowSymbol(_pt, _scale, angle)
+                lines.append(l)
+                triangles.append(tr)
+            elif _seg is not None:
+                mid = _seg.getPoint(0.5)
+                l, tr = AttribSymbols.arrowSymbol(mid, _scale, angle)
+                lines.append(l)
+                triangles.append(tr)
 
         # get the colors
         colors = []
@@ -60,7 +121,8 @@ class AttribSymbols:
             "circles": circles,
             "colors": colors,
             "points": points,
-            "time": time
+            "time": time,
+            "text": []
         }
 
         return symbol
