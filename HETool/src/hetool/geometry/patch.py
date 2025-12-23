@@ -1,6 +1,7 @@
 from hetool.geometry.point import Point
 from hetool.compgeom.tesselation import Tesselation
 from hetool.compgeom.compgeom import CompGeom
+import math
 
 
 class Patch:
@@ -190,42 +191,98 @@ class Patch:
     # Retorna a estrutura de loops (número de subdivisões por segmento)
     def getMeshLoops(self):
         loops = []
-        for seg in self.segments:
+        
+        # 1. Loop Externo
+        outer_loop = []
+        # Ordena segmentos para garantir continuidade
+        ordered_segments = self._sort_segments(self.segments)
+        
+        for seg in ordered_segments:
             n = 1
-            # Procura atributo de subdivisão
             if hasattr(seg, 'attributes'):
                 for att in seg.attributes:
                     if att['name'] == "Nsbdvs":
                         n = att['properties']['Value']
                         break
-            loops.append(n)
+            outer_loop.append(n)
+            
+        if not self.holes:
+            return outer_loop
+            
+        loops.append(outer_loop)
+        
+        # 2. Loops dos Buracos
+        for hole in self.holes:
+            hole_loop = []
+            ordered_hole = self._sort_segments(hole)
+            for seg in ordered_hole:
+                n = 1
+                if hasattr(seg, 'attributes'):
+                    for att in seg.attributes:
+                        if att['name'] == "Nsbdvs":
+                            n = att['properties']['Value']
+                            break
+                hole_loop.append(n)
+            loops.append(hole_loop)
+            
         return loops
 
-    # Retorna todos os pontos da fronteira discretizados para a geração da malha
     def getMeshBdryPoints(self):
-        points = []
-        for i in range(len(self.segments)):
-            seg = self.segments[i]
-            orient = self.segmentOrients[i]
+        pts = []
+        
+        def collect_points(segment_list):
+            collected = []
+            # Ordena segmentos antes de coletar pontos
+            ordered = self._sort_segments(segment_list)
             
-            n = 1
-            if hasattr(seg, 'attributes'):
-                for att in seg.attributes:
-                    if att['name'] == "Nsbdvs":
-                        n = att['properties']['Value']
-                        break
-            
-            # Define direção baseada na orientação do segmento no patch
-            if orient: # True = Sentido original
-                start_t, end_t = 0.0, 1.0
-            else:      # False = Sentido invertido
-                start_t, end_t = 1.0, 0.0
-            
-            # Gera n pontos (o último ponto do segmento é o primeiro do próximo)
-            for k in range(n):
-                t = start_t + (end_t - start_t) * (k / float(n))
-                # Assume que o segmento tem método getPoint (Polyline/Line)
-                pt = seg.getPoint(t) 
-                points.append(pt)
+            for seg in ordered:
+                n = 1
+                if hasattr(seg, 'attributes'):
+                    for att in seg.attributes:
+                        if att['name'] == "Nsbdvs":
+                            n = att['properties']['Value']
+                            break
                 
-        return points
+                for i in range(n):
+                    t = i / float(n)
+                    collected.append(seg.getPoint(t))
+            return collected
+
+        pts.extend(collect_points(self.segments))
+        
+        if self.holes:
+            for hole in self.holes:
+                pts.extend(collect_points(hole))
+                
+        return pts
+
+    # Ordena uma lista de segmentos para formar a cadeia contínua para Delaunay
+    def _sort_segments(self, segments):
+        if not segments or len(segments) < 2:
+            return segments
+            
+        pool = list(segments)
+        ordered = [pool.pop(0)]
+        
+        while pool:
+            last_pt = ordered[-1].getPoint(1.0)
+            found_idx = -1
+            
+            for i, seg in enumerate(pool):
+                # Verifica se o inicio do seg conecta com o fim do ultimo
+                # Correção: Calculando distância manualmente pois Point não tem .dist()
+                p_start = seg.getPoint(0.0)
+                dx = p_start.getX() - last_pt.getX()
+                dy = p_start.getY() - last_pt.getY()
+                dist = math.sqrt(dx*dx + dy*dy)
+                
+                if dist < 1e-4:
+                    found_idx = i
+                    break
+            
+            if found_idx != -1:
+                ordered.append(pool.pop(found_idx))
+            else:
+                # Se não encontrar conexão, tenta conectar o próximo segmento
+                ordered.append(pool.pop(0))
+        return ordered

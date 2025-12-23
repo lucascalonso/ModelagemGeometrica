@@ -250,6 +250,36 @@ class HeController:
 
             if init_vertex.point != end_vertex.point:
                 # case 1.1: points are different, then it is an open segment
+                
+                # Fix for when half-edges are found in different faces (e.g. boundary ambiguity)
+                if he1.loop.face != he2.loop.face:
+                    # Try to find he2 in he1's face
+                    he_curr = he2
+                    found = False
+                    # Iterate around vertex to find half-edge in the same face
+                    start_he = he2
+                    while True:
+                        he_curr = he_curr.mate().next
+                        if he_curr.loop.face == he1.loop.face:
+                            he2 = he_curr
+                            found = True
+                            break
+                        if he_curr == start_he:
+                            break
+                    
+                    if not found:
+                        # Try to find he1 in he2's face
+                        he_curr = he1
+                        start_he = he1
+                        while True:
+                            he_curr = he_curr.mate().next
+                            if he_curr.loop.face == he2.loop.face:
+                                he1 = he_curr
+                                found = True
+                                break
+                            if he_curr == start_he:
+                                break
+
                 # checks if the half-edges have the same loop to decide between MEF and MEKR
 
                 if he1.loop != he2.loop:
